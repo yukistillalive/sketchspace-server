@@ -85,6 +85,18 @@ CANVAS=$(curl -s -X POST http://localhost:3000/api/canvas \
   -H "Content-Type: application/json" -d '{"name":"yuki"}' \
   | sed 's/.*"canvasId":"\([^"]*\)".*/\1/')
 
+# simple POST to create canvas on Windows:
+CANVAS=$(curl -s -X POST http://localhost:3000/api/canvas \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"yuki\"}" \
+  | sed 's/.*"canvasId":"\([^"]*\)".*/\1/')
+
+# POST with full test sequence on Windows
+curl -s -X POST http://localhost:3000/api/canvas \                                                   
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"yuki\"}"
+
+
 curl http://localhost:3000/api/canvas            # read all
 curl http://localhost:3000/api/canvas/$CANVAS      # read one
 curl -X PUT http://localhost:3000/api/canvas/$CANVAS \

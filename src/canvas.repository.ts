@@ -1,13 +1,25 @@
 import { ObjectId, type Collection, type WithId } from 'mongodb';
 import { getDb } from './db.js';
 
+export interface Layer {
+  id: string;
+  order: number;
+  visible: boolean;
+}
+
 export interface Canvas {
   name: string;
   /** A shared canvas can be joined by other users; an unshared one is private. */
   isShared: boolean;
   createdAt: Date;
   updatedAt: Date;
+  layers: Layer[];
 }
+
+//the layer at the forefront starts with 0, layers behind it will be numbered > 0. (order 1 is behind order 0)
+const defaultLayers: Layer[] = [{id: "foreground", order: 0, visible: true}, 
+{id: "middleground", order: 1, visible: true}, {id: "background", order: 2, visible: true}
+]
 
 export type CanvasDoc = WithId<Canvas>;
 
@@ -29,6 +41,7 @@ export async function createCanvas({ name, isShared }: NewCanvas): Promise<strin
     isShared: isShared ?? false,
     createdAt: now,
     updatedAt: now,
+    layers: defaultLayers,
   });
   return result.insertedId.toString();
 }

@@ -50,11 +50,11 @@ canvasRouter.put('/:id', async (req, res) => {
 });
 
 // delete
-canvasRouter.delete('/:id', async (req, res) => {
-  if (!repo.isValidCanvasId(req.params.id))
+canvasRouter.delete('/:id', async (req, res) => { //when a delete request arrives at /:id, run this to send a response
+  if (!repo.isValidCanvasId(req.params.id)) //checks format
     return res.status(400).json({ error: 'Invalid canvas id' });
 
-  const found = await repo.deleteCanvas(req.params.id);
+  const found = await repo.deleteCanvas(req.params.id); //found holds the result (true/false) of a calling async function
   if (!found) return res.status(404).json({ error: 'Canvas not found' });
   res.json({ ok: true });
 });
