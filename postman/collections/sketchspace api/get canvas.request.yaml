@@ -1,0 +1,15 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/canvas/{{canvasId}}'
+order: 5000
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('200 and has the canvas fields', () => {
+        pm.response.to.have.status(200);
+        const c = pm.response.json();
+        pm.expect(c).to.include.all.keys('_id', 'name', 'isShared', 'createdAt', 'updatedAt');
+        pm.expect(c.name).to.eql('postman test');
+        pm.expect(c.isShared).to.eql(true);
+      });

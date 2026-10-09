@@ -1,0 +1,12 @@
+$kind: http-request
+method: DELETE
+url: '{{baseUrl}}/api/canvas/{{canvasId}}'
+order: 11000
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('200 and ok', () => {
+        pm.response.to.have.status(200);
+        pm.expect(pm.response.json()).to.eql({ ok: true });
+      });

@@ -1,0 +1,19 @@
+$kind: http-request
+method: PUT
+url: '{{baseUrl}}/api/canvas/{{canvasId}}'
+order: 6000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {"isShared":false}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('200 and ok', () => {
+        pm.response.to.have.status(200);
+        pm.expect(pm.response.json()).to.eql({ ok: true });
+      });

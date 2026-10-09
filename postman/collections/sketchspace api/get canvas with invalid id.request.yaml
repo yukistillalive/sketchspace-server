@@ -1,0 +1,12 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/canvas/not-an-id'
+order: 9000
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('400 for a malformed id', () => {
+        pm.response.to.have.status(400);
+        pm.expect(pm.response.json().error).to.match(/invalid/i);
+      });

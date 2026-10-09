@@ -1,7 +1,118 @@
-# Express + MongoDB Communication Demo for DH2643 seminar
+# Sketchspace Server
 
-A minimal Express server that stores and retrieves data from MongoDB. When a request
-reaches Express, Express queries MongoDB, and the data comes back as JSON.
+Backend for Sketchspace, a collaborative sketching app. People sketch together on a shared canvas in real time, and every stroke is saved so a canvas can be reopened where it was left.
+
+## Features
+
+- REST API to create, list, rename, share and delete canvases
+- Real-time drawing over socket.io: strokes are validated, saved and sent to everyone on the canvas
+- Late joiners receive the strokes already drawn
+- Shared canvases (anyone with the id can join) and private ones
+
+Built with Node.js, TypeScript, Express, socket.io and MongoDB.
+
+The API is documented below. To run the server locally, see [Setup](#setup) and
+[Run](#run).
+
+## API
+
+- **REST API**: manage canvases
+- **socket.io API** for live drawing
+
+| | |
+|---|---|
+| **Base URL** | `http://localhost:3000` (port set by `PORT`) |
+| **Format** | JSON requests and responses |
+| **Auth** | none yet |
+| **CORS** | browsers may call the API from the origins in `CLIENT_ORIGIN` (comma-separated, default `http://localhost:5173`) |
+
+### Quick start
+
+```js
+import { io } from 'socket.io-client';
+const API = 'http://localhost:3000';
+
+// 1. create a shared canvas → 201 { canvasId }
+const { canvasId } = await fetch(`${API}/api/canvas`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ name: 'my sketch', isShared: true }),
+}).then((r) => r.json());
+
+// 2. join it; the ack carries the strokes already saved, oldest first
+const socket = io(API);
+socket.emit('canvas:join', canvasId, (res) => {
+  if (!res.ok) return console.error(res.error);   // e.g. "Canvas is not shared"
+  res.strokes.forEach(draw);
+});
+
+// 3. send a finished stroke; other participants receive it
+socket.emit('stroke:add', {
+  canvasId, layerId: 'foreground', brush: 'pen', size: 4, color: '#222222', opacity: 1,
+  path: [{ x: 10, y: 12 }, { x: 14, y: 18 }],
+}, (res) => { /* { ok: true, id } or { ok: false, error } */ });
+
+// 4. draw what others send
+socket.on('stroke:added', draw);
+```
+
+### Canvas
+
+| Field | Type | Notes |
+|---|---|---|
+| `_id` | string | canvas id |
+| `name` | string | defaults to `"untitled"` |
+| `isShared` | boolean | defaults to `false`; only shared canvases can be joined |
+| `createdAt`, `updatedAt` | ISO date | `updatedAt` changes on every update |
+
+### REST endpoints
+
+| Method | Endpoint | Body | Success response |
+|---|---|---|---|
+| GET | `/health` | none | `200 { "ok": true }` |
+| POST | `/api/canvas` | `{ name?, isShared? }` | `201 { "canvasId": "..." }` |
+| GET | `/api/canvas` | none | `200` array of canvases |
+| GET | `/api/canvas/:id` | none | `200` canvas |
+| PUT | `/api/canvas/:id` | `{ name?, isShared? }`, at least one | `200 { "ok": true }` |
+| DELETE | `/api/canvas/:id` | none | `200 { "ok": true }` |
+
+Errors are `{ "error": "message" }` with status `400` (invalid id or body) or `404`
+(canvas not found).
+
+### Real-time events (socket.io)
+
+Connect with `io(API)`.
+
+| Client → server | Payload | Reply |
+|---|---|---|
+| `canvas:join` | `canvasId` | ack `{ ok: true, strokes }` or `{ ok: false, error }`; the canvas must exist and be shared |
+| `canvas:leave` | none | none |
+| `stroke:add` | a stroke | ack `{ ok: true, id }` or `{ ok: false, error }`; saved, then sent to the others |
+
+| Server → client | Payload | Meaning |
+|---|---|---|
+| `stroke:added` | stroke + `id` | another participant finished a stroke |
+| `canvas:peers` | number | participants currently in the canvas |
+
+A **stroke** is:
+
+| Field | Type | Rules |
+|---|---|---|
+| `canvasId` | string | must be the canvas this socket joined |
+| `layerId`, `brush`, `color` | string | non-empty |
+| `size` | number | greater than 0, up to 500 |
+| `opacity` | number | 0 to 1 |
+| `path` | `{ x, y }[]` | 1 to 5000 points, finite numbers |
+
+Notes:
+- Join before drawing; `stroke:add` is rejected for a canvas the socket has not joined.
+- A socket is in one canvas at a time; joining another leaves the first.
+- You do not receive your own strokes back. After a reconnect, call `canvas:join` again
+  to get what you missed.
+- Strokes are sent whole when the pointer is released, not while drawing.
+- Stroke messages use `id`; REST canvases use `_id`.
+
+---
 
 ## Structure
 
@@ -12,8 +123,13 @@ reaches Express, Express queries MongoDB, and the data comes back as JSON.
 ├── .env             # MongoDB connection string
 ├── mongodb/
 │   └── canvas.mongodb.js     # MongoDB playground for the canvas collection
+├── postman/
+│   ├── collections/sketchspace api/  # REST API tests (Postman collection, one file per request)
+│   └── environments/local.environment.yaml  # baseUrl for the tests
 ├── public/
 │   └── index.html            # demo sketching client (plain HTML + socket.io client)
+├── test/
+│   └── socket.test.ts        # automated socket.io tests
 └── src/
     ├── db.ts                 # opens the connection, hands out a shared db handle
     ├── canvas.repository.ts  # all MongoDB queries for canvas
@@ -79,140 +195,39 @@ npm run dev
 
 Other scripts: `npm run typecheck`, `npm run build` (emits `dist/`), `npm start` (runs the build).
 
-## API
+## Postman API tests
 
-A canvas is the unit of collaboration: `{ name, isShared, createdAt, updatedAt }`.
-`isShared` (default `false`) controls whether other users can join it.
+### Setup
 
-| Method | Path              | Purpose                                                    |
-|--------|-------------------|------------------------------------------------------------|
-| GET    | `/health`         | Health check, returns `{ "ok": true }`                     |
-| POST   | `/api/canvas`     | Create a canvas (`name?`, `isShared?`), returns `canvasId` |
-| GET    | `/api/canvas`     | List all canvases                                          |
-| GET    | `/api/canvas/:id` | Get one canvas by id                                       |
-| PUT    | `/api/canvas/:id` | Partial update: `name` and/or `isShared`                   |
-| DELETE | `/api/canvas/:id` | Delete a canvas                                            |
+1. Install the Postman CLI (macOS / Linux):
 
-## Real-time sketching (socket.io)
+   ```bash
+   curl -o- "https://dl-cli.pstmn.io/install/unix.sh" | sh
+   ```
 
-Each canvas is a socket.io room. MongoDB is the source of truth; sockets only deliver.
+   For Windows and other options see the
+   [Postman CLI docs](https://learning.postman.com/docs/postman-cli/postman-cli-overview/).
 
-```
-client A ──canvas:join──▶ server ──▶ checks canvas exists and is shared
-                                 └─▶ joins room, replies with saved strokes
-client A ──stroke:add───▶ server ──▶ validates, saves to `strokes`
-                                 ├─▶ acks A with the stroke id
-                                 └─▶ stroke:added ──▶ everyone else in the canvas
-```
+   Sign in, or set up a project without an account: `postman login` or `postman init`.
 
-| Event (client → server) | Payload                | Reply / effect                                    |
-|-------------------------|------------------------|---------------------------------------------------|
-| `canvas:join`           | `canvasId`             | ack `{ ok, strokes }`; only shared canvases can be joined |
-| `canvas:leave`          | none                   | leaves the canvas                                 |
-| `stroke:add`            | a stroke (see below)   | ack `{ ok, id }`; broadcast to the others         |
+2. Start MongoDB and the server (see "Run"), so the API is listening on
+   `http://localhost:3000`. If your server uses another port, change `baseUrl` in
+   [postman/environments/local.environment.yaml](postman/environments/local.environment.yaml).
 
-| Event (server → client) | Payload            | Meaning                                  |
-|-------------------------|--------------------|------------------------------------------|
-| `stroke:added`          | stroke + `id`      | another participant finished a stroke    |
-| `canvas:peers`          | number             | how many sockets are in the canvas now   |
-
-A stroke is `{ canvasId, layerId, brush, size, color, opacity, path: [{x, y}, ...] }`.
-Clients are not trusted: the server validates the shape and size of every stroke and
-only accepts strokes for the canvas that socket has joined.
-
-Try it: run the server, open <http://localhost:3000> in two browser windows, click
-**New shared canvas** in the first, then paste its id into the second and click
-**Join**. Drawing in one window appears in the other when the stroke is finished;
-reloading shows the saved strokes.
-
-## Using the API from a frontend
-
-The server speaks two protocols on one port (default `http://localhost:3000`):
-**REST** for managing canvases and **socket.io** for live sketching. A canvas is a
-sketching room. Typical flow: create or pick a canvas over REST, then join it over
-the socket and draw.
-
-> **CORS:** the server only accepts browser requests (REST and socket.io) from the
-> origins listed in `CLIENT_ORIGIN` (comma-separated; default `http://localhost:5173`,
-> Vite's dev server). Set it to your frontend's URL, e.g.
-> `CLIENT_ORIGIN=http://localhost:3001,https://app.example.com`. Requests from other
-> origins are blocked by the browser.
-
-### REST
-
-
-```js
-const API = 'http://localhost:3000';
-
-// create → 201 { canvasId }
-const { canvasId } = await fetch(`${API}/api/canvas`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ name: 'my sketch', isShared: true }),   // both optional
-}).then((r) => r.json());
-
-// list → [{ _id, name, isShared, createdAt, updatedAt }, ...]
-const canvases = await fetch(`${API}/api/canvas`).then((r) => r.json());
-
-// share / unshare or rename (send name and/or isShared) → { ok: true }
-await fetch(`${API}/api/canvas/${canvasId}`, {
-  method: 'PUT',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ isShared: false }),
-});
-```
-
-`GET /api/canvas/:id` returns one canvas and `DELETE /api/canvas/:id` removes it
-(see the table above). Canvas ids are the `_id` string; only **shared** canvases can
-be joined over the socket.
-
-### Real time
-
-```js
-import { io } from 'socket.io-client';
-const socket = io(API);
-
-// 1. join: the ack carries the strokes already saved, oldest first
-socket.emit('canvas:join', canvasId, (res) => {
-  if (!res.ok) return console.error(res.error);   // e.g. "Canvas is not shared"
-  res.strokes.forEach(draw);
-});
-
-// 2. draw locally, then send the finished stroke
-const stroke = {
-  canvasId, layerId: 'foreground', brush: 'pen', size: 4, color: '#222222',
-  opacity: 1,                                  // 0..1
-  path: [{ x: 10, y: 12 }, { x: 14, y: 18 }],  // 1..5000 points
-};
-socket.emit('stroke:add', stroke, (res) => { /* { ok: true, id } or { ok: false, error } */ });
-
-// 3. receive other people's strokes (you never get your own back)
-socket.on('stroke:added', draw);               // stroke + id
-socket.on('canvas:peers', (n) => {});          // participants currently in the canvas
-```
-
-- Join before drawing: `stroke:add` is rejected for a canvas the socket hasn't joined.
-- A socket is in one canvas at a time; joining another leaves the first.
-- After a reconnect, call `canvas:join` again to get the strokes you missed.
-- Strokes are sent whole when the pointer is released, not while drawing.
-- Stroke messages use `id`; REST canvas objects use `_id`.
-
-## Test
+### Run
 
 ```bash
-# create → returns { "canvasId": "..." }
-CANVAS=$(curl -s -X POST http://localhost:3000/api/canvas \
-  -H "Content-Type: application/json" -d '{"name":"yuki"}' \
-  | sed 's/.*"canvasId":"\([^"]*\)".*/\1/')
-
-curl http://localhost:3000/api/canvas            # read all
-curl http://localhost:3000/api/canvas/$CANVAS      # read one
-curl -X PUT http://localhost:3000/api/canvas/$CANVAS \
-  -H "Content-Type: application/json" -d '{"name":"renamed","isShared":true}'   # update / share
-curl http://localhost:3000/api/canvas/$CANVAS      # confirm the rename
-curl -X DELETE http://localhost:3000/api/canvas/$CANVAS            # delete
-curl http://localhost:3000/api/canvas/$CANVAS      # now 404 — confirms delete
+postman collection run "postman/collections/sketchspace api" \
+  -e postman/environments/local.environment.yaml
 ```
+
+## Automated socket tests
+
+`npm run test:socket` runs `test/socket.test.ts`: it starts the socket layer on a random
+port, connects real `socket.io-client` sockets and checks joining (invalid, unknown and
+private canvases are rejected), stroke relay (others receive it, the sender and
+outsiders do not), saving, validation of bad strokes, late joiners receiving saved
+strokes, and the participant count.
 
 ## Inspect the database
 
@@ -222,20 +237,3 @@ Use the **MongoDB for VS Code** extension (`mongodb.mongodb-vscode`):
 2. Choose **Connect with Connection String** and enter
    `mongodb://localhost:27017` (no spaces).
 3. Expand the connection → `sketch-space` → `canvas` to browse the documents.
-   Click a document to view or edit it.
-
-Playground scripts live in [mongodb/](mongodb/). Open
-[mongodb/canvas.mongodb.js](mongodb/canvas.mongodb.js) and press the **Play**
-button to run it; results open in a side panel. It targets:
-
-```js
-const database = "sketch-space";
-const collection = 'canvas';
-```
-
-The file contains queries that match the canvas fields
-(`name`, `isShared`, `createdAt`, `updatedAt`): list all (newest first), shared only,
-private only, by name, recently updated, and a shared/private count. Running a
-playground executes every statement in the file, so the statements that change data
-(insert, share/unshare, delete) are commented out; uncomment one at a time. To find or
-change a single canvas, replace `<id>` with its `_id`.
