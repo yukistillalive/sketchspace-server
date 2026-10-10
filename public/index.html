@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sketchspace demo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; }
+    #bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+    #canvasId { width: 260px; }
+    canvas { border: 1px solid #888; touch-action: none; cursor: crosshair; max-width: 100%; }
+    #status { color: #555; }
+  </style>
+</head>
+<body>
+  <div id="bar">
+    <button id="create">New shared canvas</button>
+    <input id="canvasId" placeholder="canvas id">
+    <button id="join">Join</button>
+    <input id="color" type="color" value="#222222">
+    <input id="size" type="range" min="1" max="40" value="4">
+    <span id="status">not connected</span>
+  </div>
+  <canvas id="board" width="900" height="600"></canvas>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const board = document.getElementById('board');
+    const ctx = board.getContext('2d');
+    const $ = (id) => document.getElementById(id);
+    const setStatus = (t) => { $('status').textContent = t; };
+
+    let canvasId = null;
+
+    function drawStroke(s) {
+      ctx.save();
+      ctx.lineCap = ctx.lineJoin = 'round';
+      ctx.lineWidth = s.size;
+      ctx.strokeStyle = s.color;
+      ctx.globalAlpha = s.opacity;
+      ctx.beginPath();
+      ctx.moveTo(s.path[0].x, s.path[0].y);
+      for (const p of s.path.slice(1)) ctx.lineTo(p.x, p.y);
+      if (s.path.length === 1) ctx.lineTo(s.path[0].x + 0.01, s.path[0].y); // dot
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function join(id) {
+      socket.emit('canvas:join', id, (res) => {
+        if (!res.ok) return setStatus(res.error);
+        canvasId = id;
+        $('canvasId').value = id;
+        history.replaceState(null, '', `?canvas=${id}`);
+        ctx.clearRect(0, 0, board.width, board.height);
+        res.strokes.forEach(drawStroke);
+        setStatus(`joined ${id}`);
+      });
+    }
+
+    $('create').onclick = async () => {
+      const r = await fetch('/api/canvas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'demo', isShared: true }),
+      });
+      join((await r.json()).canvasId);
+    };
+    $('join').onclick = () => join($('canvasId').value.trim());
+
+    // another participant finished a stroke
+    socket.on('stroke:added', drawStroke);
+    socket.on('canvas:peers', (n) => setStatus(`joined ${canvasId} (${n} here)`));
+    // reconnect (e.g. server restart): rejoin to get missed strokes
+    socket.on('connect', () => canvasId && join(canvasId));
+
+    // --- local drawing: collect points, draw immediately, send on pointer-up ---
+    let current = null;
+    const pos = (e) => {
+      const r = board.getBoundingClientRect();
+      return { x: (e.clientX - r.left) * (board.width / r.width), y: (e.clientY - r.top) * (board.height / r.height) };
+    };
+
+    board.addEventListener('pointerdown', (e) => {
+      if (!canvasId) return setStatus('join a canvas first');
+      board.setPointerCapture(e.pointerId);
+      current = { canvasId, layerId: 'foreground', brush: 'pen', size: +$('size').value,
+                  color: $('color').value, opacity: 1, path: [pos(e)] };
+    });
+    board.addEventListener('pointermove', (e) => {
+      if (!current) return;
+      current.path.push(pos(e));
+      drawStroke({ ...current, path: current.path.slice(-2) }); // draw the newest segment
+    });
+    const finish = () => {
+      if (!current) return;
+      const stroke = current;
+      current = null;
+      drawStroke(stroke);
+      socket.emit('stroke:add', stroke, (res) => { if (!res.ok) setStatus(res.error); });
+    };
+    board.addEventListener('pointerup', finish);
+    board.addEventListener('pointercancel', finish);
+
+    const fromUrl = new URLSearchParams(location.search).get('canvas');
+    if (fromUrl) socket.once('connect', () => join(fromUrl));
+  </script>
+</body>
+</html>

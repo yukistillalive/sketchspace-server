@@ -1,0 +1,14 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/canvas/{{canvasId}}'
+order: 7000
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('isShared is now false and updatedAt moved', () => {
+        pm.response.to.have.status(200);
+        const c = pm.response.json();
+        pm.expect(c.isShared).to.eql(false);
+        pm.expect(new Date(c.updatedAt).getTime()).to.be.at.least(new Date(c.createdAt).getTime());
+      });

@@ -1,0 +1,11 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/canvas/{{canvasId}}'
+order: 12000
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('404 once deleted', () => {
+        pm.response.to.have.status(404);
+      });

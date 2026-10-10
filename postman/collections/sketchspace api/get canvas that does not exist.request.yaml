@@ -1,0 +1,11 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/canvas/6abe45dcc09e70d0e46e4bbb'
+order: 10000
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('404 for an unknown id', () => {
+        pm.response.to.have.status(404);
+      });

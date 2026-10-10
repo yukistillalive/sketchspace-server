@@ -12,6 +12,11 @@ export async function connectDB(): Promise<void> {
   console.log('MongoDB connected');
 }
 
+export async function closeDB(): Promise<void> {
+  await client.close();
+  db = undefined;
+}
+
 export function getDb(): Db {
   if (!db) throw new Error('Database not connected; call connectDB() first');
   return db;

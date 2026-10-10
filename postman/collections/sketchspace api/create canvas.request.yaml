@@ -1,0 +1,21 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/canvas'
+order: 2000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {"name":"postman test","isShared":true}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('201 and returns canvasId', () => {
+        pm.response.to.have.status(201);
+        const id = pm.response.json().canvasId;
+        pm.expect(id).to.be.a('string').and.have.length.above(0);
+        pm.collectionVariables.set('canvasId', id);
+      });
