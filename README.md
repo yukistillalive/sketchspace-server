@@ -217,6 +217,32 @@ Other scripts: `npm run typecheck`, `npm run build` (emits `dist/`), `npm start`
 ### Run
 
 ```bash
+# create → returns { "canvasId": "..." }
+CANVAS=$(curl -s -X POST http://localhost:3000/api/canvas \
+  -H "Content-Type: application/json" -d '{"name":"yuki"}' \
+  | sed 's/.*"canvasId":"\([^"]*\)".*/\1/')
+
+# simple POST to create canvas on Windows:
+CANVAS=$(curl -s -X POST http://localhost:3000/api/canvas \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"yuki\"}" \
+  | sed 's/.*"canvasId":"\([^"]*\)".*/\1/')
+
+# POST with full test sequence on Windows
+curl -s -X POST http://localhost:3000/api/canvas \                                                   
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"yuki\"}"
+
+
+curl http://localhost:3000/api/canvas            # read all
+curl http://localhost:3000/api/canvas/$CANVAS      # read one
+curl -X PUT http://localhost:3000/api/canvas/$CANVAS \
+  -H "Content-Type: application/json" -d '{"name":"renamed","isShared":true}'   # update / share
+curl http://localhost:3000/api/canvas/$CANVAS      # confirm the rename
+curl -X DELETE http://localhost:3000/api/canvas/$CANVAS            # delete
+curl http://localhost:3000/api/canvas/$CANVAS      # now 404 — confirms delete
+
+# Or run the Postman collection:
 postman collection run "postman/collections/sketchspace api" \
   -e postman/environments/local.environment.yaml
 ```
