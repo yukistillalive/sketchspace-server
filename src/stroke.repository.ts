@@ -23,6 +23,10 @@ const strokes = (): Collection<Stroke> => getDb().collection<Stroke>('strokes');
 
    export type NewStroke = Omit<Stroke, 'createdAt'>;
 
+export function listStrokes(canvasId: string): Promise<StrokeDoc[]> {
+  return strokes().find({ canvasId }).sort({ createdAt: 1 }).toArray();
+}
+
 export async function addStroke({ canvasId, layerId, path, brush, size, color, opacity }: NewStroke): Promise<string> {
   const now = new Date();
   const result = await strokes().insertOne({
