@@ -32,7 +32,7 @@ export type CanvasUpdate = NewCanvas;
 
 const canvas = (): Collection<Canvas> => getDb().collection<Canvas>('canvas');
 
-export const isValidCanvasId = (id: string): boolean => ObjectId.isValid(id);
+export const isValidCanvasId = (id: string): boolean => /^[0-9a-f]{24}$/i.test(id);
 
 export async function createCanvas({ name, isShared }: NewCanvas): Promise<string> {
   const now = new Date();

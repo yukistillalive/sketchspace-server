@@ -1,6 +1,7 @@
 import express from 'express';
 import { connectDB } from './db.js';
 import { canvasRouter } from './canvas.routes.js';
+import { strokeRouter } from './stroke.routes.js';
 
 const app = express();
 app.use(express.json());
@@ -8,6 +9,7 @@ app.get('/', (_req, res) => {
   res.json({ ok: true });
 });
 app.use('/api/canvas', canvasRouter);
+app.use('/api/canvas', strokeRouter);
 
 await connectDB();
 app.listen(process.env.PORT, () =>
