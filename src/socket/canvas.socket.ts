@@ -1,8 +1,9 @@
 // Real-time layer. A canvas is a sketching room: sockets join it by canvas id, finished
 // strokes are saved (stroke.repository) and relayed to everyone else in the room.
 import type { Server, Socket } from 'socket.io';
-import { findCanvas, isValidCanvasId } from './canvas.repository.js';
-import { addStroke, listStrokes, type NewStroke, type Stroke } from './stroke.repository.js';
+import { getJoinableCanvas } from '../services/canvas.service.js';
+import { addStroke, listStrokes, type NewStroke, type Stroke } from '../repositories/stroke.repository.js';
+import { parseStroke } from '../validation/stroke.validation.js';
 
 /** A stroke as sent over the wire: persisted fields plus its database id. */
 export type StrokeMessage = Omit<Stroke, 'createdAt'> & { id: string };
@@ -31,37 +32,6 @@ interface SocketData {
 type CanvasServer = Server<ClientToServerEvents, ServerToClientEvents, {}, SocketData>;
 type CanvasSocket = Socket<ClientToServerEvents, ServerToClientEvents, {}, SocketData>;
 
-const MAX_POINTS_PER_STROKE = 5000; // caps the size of one saved stroke
-
-const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
-const isStr = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
-
-/** Clients are untrusted: check the shape and size of everything we persist and relay. */
-function parseStroke(raw: unknown): NewStroke | null {
-  if (typeof raw !== 'object' || raw === null) return null;
-  const s = raw as Record<string, unknown>;
-
-  // required text fields, then numeric ranges, then the path
-  if (!isStr(s.canvasId) || !isStr(s.layerId) || !isStr(s.brush) || !isStr(s.color)) return null;
-  if (!isNum(s.size) || s.size <= 0 || s.size > 500) return null;
-  if (!isNum(s.opacity) || s.opacity < 0 || s.opacity > 1) return null;
-  if (!Array.isArray(s.path) || s.path.length === 0 || s.path.length > MAX_POINTS_PER_STROKE)
-    return null;
-  if (!s.path.every((p) => typeof p === 'object' && p !== null && isNum(p.x) && isNum(p.y)))
-    return null;
-
-  // rebuild the object from checked fields so unknown extra fields are dropped
-  return {
-    canvasId: s.canvasId,
-    layerId: s.layerId,
-    brush: s.brush,
-    color: s.color,
-    size: s.size,
-    opacity: s.opacity,
-    path: s.path.map((p: { x: number; y: number }) => ({ x: p.x, y: p.y })),
-  };
-}
-
 export function registerCanvasSocket(io: CanvasServer): void {
   // Tell everyone in the canvas how many sockets are in it.
   const announcePeers = (canvasId: string) =>
@@ -80,12 +50,8 @@ export function registerCanvasSocket(io: CanvasServer): void {
     // Join: validate -> enter the room -> reply with the saved strokes (history for late joiners).
     socket.on('canvas:join', async (canvasId, ack) => {
       if (typeof ack !== 'function') return; // ignore requests without an ack callback
-      if (typeof canvasId !== 'string' || !isValidCanvasId(canvasId))
-        return ack({ ok: false, error: 'Invalid canvas id' });
-
-      const canvas = await findCanvas(canvasId);
-      if (!canvas) return ack({ ok: false, error: 'Canvas not found' });
-      if (!canvas.isShared) return ack({ ok: false, error: 'Canvas is not shared' });
+      const joinable = await getJoinableCanvas(canvasId);
+      if (!joinable.ok) return ack(joinable);
 
       leaveCurrent(socket); // a socket sketches in one canvas at a time
       await socket.join(canvasId);

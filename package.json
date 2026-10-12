@@ -7,7 +7,9 @@
     "build": "tsc",
     "start": "node --env-file=.env dist/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
-    "test:socket": "tsx --test test/socket.test.ts"
+    "test:socket": "tsx --test test/socket.test.ts",
+    "test": "tsx --test --test-concurrency=1 test/socket.test.ts test/canvas.service.test.ts",
+    "test:service": "tsx --test test/canvas.service.test.ts"
   },
   "dependencies": {
     "cors": "^2.8.6",

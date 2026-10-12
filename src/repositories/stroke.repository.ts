@@ -1,5 +1,5 @@
 import { type Collection, type WithId } from 'mongodb';
-import { getDb } from './db.js';
+import { getDb } from '../db.js';
 
 export interface Path {
   x: number;
@@ -30,4 +30,10 @@ export async function addStroke(stroke: NewStroke): Promise<string> {
 /** All strokes of a canvas in drawing order (oldest first). */
 export function listStrokes(canvasId: string): Promise<StrokeDoc[]> {
   return strokes().find({ canvasId }).sort({ createdAt: 1 }).toArray();
+}
+
+/** Removes every stroke of a canvas. Returns how many were deleted. */
+export async function deleteStrokesByCanvas(canvasId: string): Promise<number> {
+  const result = await strokes().deleteMany({ canvasId });
+  return result.deletedCount;
 }

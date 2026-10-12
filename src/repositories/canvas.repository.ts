@@ -1,5 +1,5 @@
 import { ObjectId, type Collection, type WithId } from 'mongodb';
-import { getDb } from './db.js';
+import { getDb } from '../db.js';
 
 export interface Layer {
   id: string;

@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import * as repo from './canvas.repository.js';
+import * as repo from '../repositories/canvas.repository.js';
+import { deleteCanvasWithStrokes } from '../services/canvas.service.js';
 
 export const canvasRouter = Router();
 
@@ -54,7 +55,7 @@ canvasRouter.delete('/:id', async (req, res) => { //when a delete request arrive
   if (!repo.isValidCanvasId(req.params.id)) //checks format
     return res.status(400).json({ error: 'Invalid canvas id' });
 
-  const found = await repo.deleteCanvas(req.params.id); //found holds the result (true/false) of a calling async function
+  const found = await deleteCanvasWithStrokes(req.params.id); // also removes its strokes //found holds the result (true/false) of a calling async function
   if (!found) return res.status(404).json({ error: 'Canvas not found' });
   res.json({ ok: true });
 });

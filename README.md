@@ -64,6 +64,7 @@ socket.on('stroke:added', draw);
 | `name` | string | defaults to `"untitled"` |
 | `isShared` | boolean | defaults to `false`; only shared canvases can be joined |
 | `createdAt`, `updatedAt` | ISO date | `updatedAt` changes on every update |
+| `layers` | `{ id, order, visible }[]` | starts as `foreground` (0), `middleground` (1), `background` (2); order 0 is the front |
 
 ### REST endpoints
 
@@ -75,9 +76,13 @@ socket.on('stroke:added', draw);
 | GET | `/api/canvas/:id` | none | `200` canvas |
 | PUT | `/api/canvas/:id` | `{ name?, isShared? }`, at least one | `200 { "ok": true }` |
 | DELETE | `/api/canvas/:id` | none | `200 { "ok": true }` |
+| POST | `/api/canvas/:id/strokes` | a stroke without `canvasId` (see below) | `201 { "strokeId": "..." }` |
+| GET | `/api/canvas/:id/strokes` | none | `200` array of strokes, oldest first |
 
 Errors are `{ "error": "message" }` with status `400` (invalid id or body) or `404`
-(canvas not found).
+(canvas not found). Strokes follow the same rules over REST and sockets.
+A stroke posted over REST is saved but, unlike a socket `stroke:add`, is not pushed to
+participants already in the canvas.
 
 ### Real-time events (socket.io)
 
@@ -129,29 +134,40 @@ Notes:
 ├── public/
 │   └── index.html            # demo sketching client (plain HTML + socket.io client)
 ├── test/
-│   └── socket.test.ts        # automated socket.io tests
+│   ├── socket.test.ts        # automated socket.io tests
+│   └── canvas.service.test.ts  # tests for the shared business rules
 └── src/
-    ├── db.ts                 # opens the connection, hands out a shared db handle
-    ├── canvas.repository.ts  # all MongoDB queries for canvas
-    ├── stroke.repository.ts  # all MongoDB queries for strokes
-    ├── canvas.routes.ts      # HTTP routes and handlers (REST)
-    ├── canvas.socket.ts      # socket.io events for live sketching (real time)
-    └── index.ts              # wires the app together and listens
+    ├── index.ts                    # wires the app together and listens
+    ├── db.ts                       # opens the connection, hands out a shared db handle
+    ├── routes/                     # REST: URL paths and request/response handling
+    │   ├── canvas.routes.ts
+    │   └── stroke.routes.ts
+    ├── socket/                     # socket.io: live sketching events
+    │   └── canvas.socket.ts
+    ├── services/                   # business rules shared by REST and sockets
+    │   └── canvas.service.ts       #   who can join, delete a canvas with its strokes
+    ├── validation/                 # input checks for untrusted data
+    │   └── stroke.validation.ts    #   used by both REST and sockets
+    └── repositories/               # all MongoDB queries
+        ├── canvas.repository.ts
+        └── stroke.repository.ts
 ```
 
 A **canvas** is a sketching room: the unit people collaborate in. It can be shared
-(others may join) or private. Two entry points lead into the same data layer:
+(others may join) or private. Two entry points lead into the same layers below them:
 
 ```
-REST request ──▶ canvas.routes.ts ──┐
-                                    ├──▶ *.repository.ts ──▶ db.ts ──▶ MongoDB
-socket event ──▶ canvas.socket.ts ──┘
+REST request ──▶ routes/ ─────┐
+                              ├──▶ services/ ──▶ repositories/ ──▶ db.ts ──▶ MongoDB
+socket event ──▶ socket/ ─────┘      (rules)       (queries)
+                    both validate input with validation/
 ```
 
-REST (`src/canvas.routes.ts`) creates, lists, shares and deletes canvases. Sockets
-(`src/canvas.socket.ts`) carry the live drawing. Neither talks to MongoDB directly;
-both call the repositories, which use the one connection opened in `src/db.ts`.
-Express and socket.io share a single HTTP server and port (`src/index.ts`).
+REST (`src/routes/`) creates, lists, shares and deletes canvases and reads or adds
+strokes. Sockets (`src/socket/`) carry the live drawing. Handlers deal only with
+requests and responses; shared rules live in `src/services/` and every database query in
+`src/repositories/`, which use the one connection opened in `src/db.ts`. Express and
+socket.io share a single HTTP server and port (`src/index.ts`).
 
 ## Prerequisites
 

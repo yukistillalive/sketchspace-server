@@ -12,9 +12,9 @@ process.env.MONGODB_URI = testUri; // db.ts reads this when first imported
 
 // Imported after the env var is set (static imports would run first).
 const { connectDB, closeDB, getDb } = await import('../src/db.js');
-const { registerCanvasSocket } = await import('../src/canvas.socket.js');
-const { createCanvas } = await import('../src/canvas.repository.js');
-const { listStrokes } = await import('../src/stroke.repository.js');
+const { registerCanvasSocket } = await import('../src/socket/canvas.socket.js');
+const { createCanvas } = await import('../src/repositories/canvas.repository.js');
+const { listStrokes } = await import('../src/repositories/stroke.repository.js');
 
 const WAIT_MS = 2000; // max wait for an event that should arrive
 const QUIET_MS = 150; // how long to wait to prove an event does not arrive
