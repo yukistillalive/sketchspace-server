@@ -2,8 +2,14 @@
 // strokes are saved (stroke.repository) and relayed to everyone else in the room.
 import type { Server, Socket } from 'socket.io';
 import { canvasEvents } from '../services/canvas.events.js';
-import { getAccessibleCanvas } from '../services/canvas.service.js';
-import { listStrokeMessages, saveStroke, type StrokeMessage } from '../services/stroke.service.js';
+import { clearCanvasStrokes, getAccessibleCanvas } from '../services/canvas.service.js';
+import {
+  listStrokeMessages,
+  saveStroke,
+  undoLastStroke,
+  type Sender,
+  type StrokeMessage,
+} from '../services/stroke.service.js';
 import type { NewStroke } from '../repositories/stroke.repository.js';
 import { parseStroke } from '../validation/stroke.validation.js';
 
@@ -22,11 +28,19 @@ interface ClientToServerEvents {
   'canvas:join': (canvasId: string, optionsOrAck: JoinOptions | JoinAck, ack?: JoinAck) => void;
   'canvas:leave': () => void;
   'stroke:add': (stroke: NewStroke, ack: Ack<{ id: string }>) => void;
+  /** Removes the sender's most recent stroke. */
+  'stroke:undo': (ack: Ack<{ id: string }>) => void;
+  /** Removes every stroke of the canvas. Owner only. */
+  'canvas:clear': (ack: Ack<{ removed: number }>) => void;
 }
 
 // Events the server pushes to clients
 interface ServerToClientEvents {
   'stroke:added': (stroke: StrokeMessage) => void;
+  /** A participant undid a stroke. */
+  'stroke:removed': (strokeId: string) => void;
+  /** The owner cleared the canvas. */
+  'canvas:cleared': () => void;
   'canvas:peers': (count: number) => void;
   /** The owner made this canvas private; you were removed from it. */
   'canvas:unshared': () => void;
@@ -76,10 +90,24 @@ export function registerCanvasSocket(io: CanvasServer): void {
   canvasEvents.on('unshared', (canvasId) => void evict(canvasId, 'canvas:unshared', true));
   // A canvas was deleted: everyone is removed.
   canvasEvents.on('deleted', (canvasId) => void evict(canvasId, 'canvas:deleted', false));
+  // The canvas room without the socket that caused the change (it already knows).
+  const others = (canvasId: string, senderSocketId?: string) => {
+    const room = io.to(canvasId);
+    return senderSocketId ? room.except(senderSocketId) : room;
+  };
   // A stroke was saved (over REST or a socket): push it to the canvas, except to its sender.
-  canvasEvents.on('strokeAdded', (stroke, senderSocketId) => {
-    const room = io.to(stroke.canvasId);
-    (senderSocketId ? room.except(senderSocketId) : room).emit('stroke:added', stroke);
+  canvasEvents.on('strokeAdded', (stroke, senderSocketId) =>
+    others(stroke.canvasId, senderSocketId).emit('stroke:added', stroke));
+  // A stroke was undone, or the canvas was cleared.
+  canvasEvents.on('strokeRemoved', (canvasId, strokeId, senderSocketId) =>
+    others(canvasId, senderSocketId).emit('stroke:removed', strokeId));
+  canvasEvents.on('cleared', (canvasId, senderSocketId) =>
+    others(canvasId, senderSocketId).emit('canvas:cleared'));
+
+  // Undo works on your own strokes. The owner counts as one author across reconnects.
+  const senderOf = (socket: CanvasSocket): Sender => ({
+    socketId: socket.id,
+    authorId: socket.data.isOwner ? 'owner' : socket.id,
   });
 
   io.on('connection', (socket) => {
@@ -119,8 +147,25 @@ export function registerCanvasSocket(io: CanvasServer): void {
         return ack({ ok: false, error: 'Join the canvas before drawing' });
 
       // Saved, then pushed to the others by the 'strokeAdded' listener above (not back to us).
-      const saved = await saveStroke(stroke, socket.id);
+      const saved = await saveStroke(stroke, senderOf(socket));
       ack(saved);
+    });
+
+    // Undo: remove your most recent stroke in this canvas; the others are told.
+    socket.on('stroke:undo', async (ack) => {
+      if (typeof ack !== 'function') return;
+      const { canvasId } = socket.data;
+      if (!canvasId) return ack({ ok: false, error: 'Join the canvas before drawing' });
+      ack(await undoLastStroke(canvasId, senderOf(socket)));
+    });
+
+    // Clear: the owner removes every stroke of the canvas; the others are told.
+    socket.on('canvas:clear', async (ack) => {
+      if (typeof ack !== 'function') return;
+      const { canvasId } = socket.data;
+      if (!canvasId) return ack({ ok: false, error: 'Join the canvas first' });
+      const cleared = await clearCanvasStrokes(canvasId, { verifiedOwner: socket.data.isOwner === true }, socket.id);
+      ack(cleared.ok ? { ok: true, removed: cleared.removed } : { ok: false, error: cleared.error });
     });
 
     // Rooms are left automatically on disconnect; only the peer count needs refreshing.

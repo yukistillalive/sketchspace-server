@@ -10,6 +10,10 @@ interface CanvasEvents {
   deleted: [canvasId: string];
   /** A stroke was saved: push it to the canvas, except to the socket that sent it (if any). */
   strokeAdded: [stroke: StrokeMessage, senderSocketId?: string];
+  /** A stroke was removed (undo): tell the canvas, except the socket that asked (if any). */
+  strokeRemoved: [canvasId: string, strokeId: string, senderSocketId?: string];
+  /** All strokes of a canvas were removed: tell the canvas, except the socket that asked (if any). */
+  cleared: [canvasId: string, senderSocketId?: string];
 }
 
 class CanvasEventEmitter extends EventEmitter {

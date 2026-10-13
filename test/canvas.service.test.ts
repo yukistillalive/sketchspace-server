@@ -17,8 +17,9 @@ const {
   deleteCanvasWithStrokes,
   createCanvasWithOwner,
   updateCanvasAndNotify,
+  clearCanvasStrokes,
 } = await import('../src/services/canvas.service.js');
-const { saveStroke } = await import('../src/services/stroke.service.js');
+const { saveStroke, undoLastStroke, listStrokeMessages } = await import('../src/services/stroke.service.js');
 
 const stroke = (canvasId: string) => ({
   canvasId, layerId: 'foreground', brush: 'pen', size: 4, color: '#000000', opacity: 1,
@@ -27,7 +28,7 @@ const stroke = (canvasId: string) => ({
 const UNKNOWN_ID = '6abe45dcc09e70d0e46e4bbb';
 
 /** Collects the arguments of a canvasEvents event until `stop()` is called. */
-function record<K extends 'unshared' | 'deleted' | 'strokeAdded'>(event: K) {
+function record<K extends 'unshared' | 'deleted' | 'strokeAdded' | 'strokeRemoved' | 'cleared'>(event: K) {
   const seen: unknown[][] = [];
   const listener = (...args: unknown[]) => seen.push(args);
   canvasEvents.on(event, listener as never);
@@ -221,7 +222,7 @@ describe('saveStroke', () => {
   it('saves the stroke and announces it with its sender', async () => {
     const { canvasId } = await createCanvasWithOwner({ isShared: true });
     const events = record('strokeAdded');
-    const res = await saveStroke(stroke(canvasId), 'socket-1');
+    const res = await saveStroke(stroke(canvasId), { socketId: 'socket-1', authorId: 'author-1' });
     assert.equal(res.ok, true);
     assert.equal((await listStrokes(canvasId)).length, 1);
 
@@ -241,5 +242,109 @@ describe('saveStroke', () => {
     assert.equal((await listStrokes(UNKNOWN_ID)).length, 0);
     assert.deepEqual(events.seen, []);
     events.stop();
+  });
+});
+
+describe('undoLastStroke', () => {
+  const me = { socketId: 'socket-me', authorId: 'author-me' };
+  const other = { socketId: 'socket-other', authorId: 'author-other' };
+
+  // Undo removes the sender's latest stroke first, then the one before it, and tells the others.
+  it('removes the sender\'s strokes newest first and announces each', async () => {
+    const { canvasId } = await createCanvasWithOwner({ isShared: true });
+    const first = await saveStroke(stroke(canvasId), me);
+    const second = await saveStroke(stroke(canvasId), me);
+    const events = record('strokeRemoved');
+
+    const undone = await undoLastStroke(canvasId, me);
+    assert.deepEqual(undone, { ok: true, id: second.ok ? second.id : '' });
+    assert.deepEqual(events.seen, [[canvasId, undone.ok ? undone.id : '', 'socket-me']]);
+    assert.deepEqual((await listStrokeMessages(canvasId)).map((s) => s.id), [first.ok ? first.id : '']);
+
+    assert.equal((await undoLastStroke(canvasId, me)).ok, true);
+    assert.deepEqual(await undoLastStroke(canvasId, me), { ok: false, error: 'Nothing to undo' });
+    events.stop();
+  });
+
+  // Undo never touches other people's strokes.
+  it('only removes the sender\'s own strokes', async () => {
+    const { canvasId } = await createCanvasWithOwner({ isShared: true });
+    await saveStroke(stroke(canvasId), me);
+    const theirs = await saveStroke(stroke(canvasId), other); // drawn last
+    await undoLastStroke(canvasId, me);
+    assert.deepEqual((await listStrokeMessages(canvasId)).map((s) => s.id), [theirs.ok ? theirs.id : '']);
+  });
+
+  // Strokes saved over REST have no author, so nobody can undo them.
+  it('cannot undo strokes that were saved without a sender', async () => {
+    const { canvasId } = await createCanvasWithOwner({ isShared: true });
+    await saveStroke(stroke(canvasId));
+    assert.deepEqual(await undoLastStroke(canvasId, me), { ok: false, error: 'Nothing to undo' });
+    assert.equal((await listStrokeMessages(canvasId)).length, 1);
+  });
+
+  // The author is stored server-side but never leaves it.
+  it('keeps the author out of what clients receive', async () => {
+    const { canvasId } = await createCanvasWithOwner({ isShared: true });
+    await saveStroke(stroke(canvasId), me);
+    assert.equal(JSON.stringify(await listStrokeMessages(canvasId)).includes('author'), false);
+  });
+
+  // Undo is scoped to one canvas.
+  it('does not undo strokes in another canvas', async () => {
+    const a = await createCanvasWithOwner({ isShared: true });
+    const b = await createCanvasWithOwner({ isShared: true });
+    await saveStroke(stroke(a.canvasId), me);
+    assert.deepEqual(await undoLastStroke(b.canvasId, me), { ok: false, error: 'Nothing to undo' });
+    assert.equal((await listStrokeMessages(a.canvasId)).length, 1);
+  });
+});
+
+describe('clearCanvasStrokes', () => {
+  // The owner clears every stroke of the canvas, not those of other canvases, and others are told.
+  it('removes all strokes of the canvas for the owner and announces it', async () => {
+    const mine = await createCanvasWithOwner({ isShared: true });
+    const other = await createCanvasWithOwner({ isShared: true });
+    await saveStroke(stroke(mine.canvasId));
+    await saveStroke(stroke(mine.canvasId), { socketId: 's', authorId: 'a' });
+    await saveStroke(stroke(other.canvasId));
+    const events = record('cleared');
+
+    assert.deepEqual(await clearCanvasStrokes(mine.canvasId, { ownerToken: mine.ownerToken }, 'socket-x'), {
+      ok: true, removed: 2,
+    });
+    assert.equal((await listStrokeMessages(mine.canvasId)).length, 0);
+    assert.equal((await listStrokeMessages(other.canvasId)).length, 1);
+    assert.deepEqual(events.seen, [[mine.canvasId, 'socket-x']]);
+    events.stop();
+  });
+
+  // A socket that already proved ownership at join can clear without the token.
+  it('accepts a verified owner without a token', async () => {
+    const { canvasId } = await createCanvasWithOwner({ isShared: true });
+    await saveStroke(stroke(canvasId));
+    assert.deepEqual(await clearCanvasStrokes(canvasId, { verifiedOwner: true }), { ok: true, removed: 1 });
+  });
+
+  // Anyone else is refused and nothing is removed or announced.
+  it('refuses everyone but the owner (403)', async () => {
+    const { canvasId } = await createCanvasWithOwner({ isShared: true });
+    await saveStroke(stroke(canvasId));
+    const events = record('cleared');
+    for (const auth of [{}, { ownerToken: 'wrong' }, { verifiedOwner: false }]) {
+      const res = await clearCanvasStrokes(canvasId, auth);
+      assert.equal(!res.ok && res.status, 403);
+    }
+    assert.equal((await listStrokeMessages(canvasId)).length, 1);
+    assert.deepEqual(events.seen, []);
+    events.stop();
+  });
+
+  // Unknown or malformed ids are reported.
+  it('reports unknown (404) and invalid (400) ids', async () => {
+    const unknown = await clearCanvasStrokes(UNKNOWN_ID, { verifiedOwner: true });
+    assert.equal(!unknown.ok && unknown.status, 404);
+    const bad = await clearCanvasStrokes('nope', { verifiedOwner: true });
+    assert.equal(!bad.ok && bad.status, 400);
   });
 });

@@ -378,3 +378,108 @@ describe('REST and socket consistency', () => {
     assert.equal((await call(guest, 'canvas:join', canvasId)).ok, false);
   });
 });
+
+// Undo removes your own latest stroke; clear removes everything and is owner only.
+describe('undo and clear', () => {
+  const ids = (strokes: { id: string }[]) => strokes.map((s) => s.id);
+
+  // Undo takes back the sender's newest stroke, the others are told, and the history reflects it.
+  it('undoes the sender\'s latest stroke and tells the others', async () => {
+    const { canvasId } = await createCanvasWithOwner({ name: 'undo', isShared: true });
+    const [a, b] = await Promise.all([client(), client()]);
+    await call(a, 'canvas:join', canvasId);
+    await call(b, 'canvas:join', canvasId);
+    const first = await call(a, 'stroke:add', stroke(canvasId));
+    const second = await call(a, 'stroke:add', stroke(canvasId));
+
+    const told = next(b, 'stroke:removed');
+    const echoed = arrives(a, 'stroke:removed');
+    const undone = await call(a, 'stroke:undo');
+    assert.deepEqual(undone, { ok: true, id: second.id });
+    assert.equal(await told, second.id);
+    assert.equal(await echoed, false, 'the sender is not told about its own undo');
+
+    const late = await client();
+    assert.deepEqual(ids((await call(late, 'canvas:join', canvasId)).strokes), [first.id]);
+
+    assert.equal((await call(a, 'stroke:undo')).ok, true);
+    const empty = await call(a, 'stroke:undo');
+    assert.deepEqual(empty, { ok: false, error: 'Nothing to undo' });
+  });
+
+  // Guests undo their own strokes and cannot remove the owner's.
+  it('only undoes your own strokes', async () => {
+    const { canvasId, ownerToken } = await createCanvasWithOwner({ name: 'mine', isShared: true });
+    const [owner, guest] = await Promise.all([client(), client()]);
+    await call(owner, 'canvas:join', canvasId, { ownerToken });
+    await call(guest, 'canvas:join', canvasId);
+    const ownerStroke = await call(owner, 'stroke:add', stroke(canvasId));
+    const guestStroke = await call(guest, 'stroke:add', stroke(canvasId)); // drawn last
+
+    assert.deepEqual(await call(owner, 'stroke:undo'), { ok: true, id: ownerStroke.id });
+    assert.deepEqual(await call(guest, 'stroke:undo'), { ok: true, id: guestStroke.id });
+    assert.equal((await call(owner, 'stroke:undo')).ok, false);
+  });
+
+  // The owner stays the same author across reconnects, so undo works after a reload.
+  it('lets the owner undo strokes drawn in an earlier connection', async () => {
+    const { canvasId, ownerToken } = await createCanvasWithOwner({ name: 'reload', isShared: false });
+    const before = await client();
+    await call(before, 'canvas:join', canvasId, { ownerToken });
+    const drawn = await call(before, 'stroke:add', stroke(canvasId));
+    before.disconnect();
+
+    const after = await client();
+    await call(after, 'canvas:join', canvasId, { ownerToken });
+    assert.deepEqual(await call(after, 'stroke:undo'), { ok: true, id: drawn.id });
+  });
+
+  // Strokes saved over REST have no author, so undo ignores them.
+  it('cannot undo a stroke that was saved over REST', async () => {
+    const { canvasId } = await createCanvasWithOwner({ name: 'rest', isShared: true });
+    const s = await client();
+    await call(s, 'canvas:join', canvasId);
+    await saveStroke(stroke(canvasId));
+    assert.deepEqual(await call(s, 'stroke:undo'), { ok: false, error: 'Nothing to undo' });
+  });
+
+  // Undo and clear need a joined canvas.
+  it('are refused before joining a canvas', async () => {
+    const s = await client();
+    assert.equal((await call(s, 'stroke:undo')).ok, false);
+    assert.equal((await call(s, 'canvas:clear')).ok, false);
+  });
+
+  // The owner clears the canvas: strokes are deleted, others are told, history is empty.
+  it('lets the owner clear the canvas and tells the others', async () => {
+    const { canvasId, ownerToken } = await createCanvasWithOwner({ name: 'clear', isShared: true });
+    const [owner, guest] = await Promise.all([client(), client()]);
+    await call(owner, 'canvas:join', canvasId, { ownerToken });
+    await call(guest, 'canvas:join', canvasId);
+    await call(owner, 'stroke:add', stroke(canvasId));
+    await call(guest, 'stroke:add', stroke(canvasId));
+
+    const told = next(guest, 'canvas:cleared');
+    const echoed = arrives(owner, 'canvas:cleared');
+    assert.deepEqual(await call(owner, 'canvas:clear'), { ok: true, removed: 2 });
+    await told;
+    assert.equal(await echoed, false, 'the owner is not told about its own clear');
+
+    const late = await client();
+    assert.deepEqual((await call(late, 'canvas:join', canvasId)).strokes, []);
+    assert.equal((await call(guest, 'stroke:undo')).ok, false, 'nothing left to undo');
+  });
+
+  // Guests cannot clear, and nothing is lost when they try.
+  it('refuses a guest who tries to clear the canvas', async () => {
+    const { canvasId } = await createCanvasWithOwner({ name: 'guarded', isShared: true });
+    const guest = await client();
+    await call(guest, 'canvas:join', canvasId);
+    await call(guest, 'stroke:add', stroke(canvasId));
+
+    const res = await call(guest, 'canvas:clear');
+    assert.equal(res.ok, false);
+    assert.match(res.error, /owner/i);
+    assert.equal((await listStrokes(canvasId)).length, 1);
+  });
+});

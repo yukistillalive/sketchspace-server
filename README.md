@@ -70,6 +70,7 @@ socket.on('stroke:added', draw);
 | DELETE | `/api/canvas/:id` | | `200 { ok: true }` | Owner |
 | POST | `/api/canvas/:id/strokes` | stroke without `canvasId` | `201 { strokeId }` | Shared: anyone. Private: owner |
 | GET | `/api/canvas/:id/strokes` | | `200` strokes, oldest first | Shared: anyone. Private: owner |
+| DELETE | `/api/canvas/:id/strokes` | | `200 { ok: true, removed }` | Owner |
 
 Errors return `{ error }` with status `400` for an invalid id or body, `403` for a private canvas or a non-owner, and `404` for an unknown canvas.
 
@@ -82,17 +83,23 @@ Client to server:
 | `canvas:join` | `canvasId`, `{ ownerToken? }` | `{ ok, strokes, isShared, isOwner }` or `{ ok: false, error }` |
 | `canvas:leave` | | |
 | `stroke:add` | stroke | `{ ok, id }` or `{ ok: false, error }` |
+| `stroke:undo` | | `{ ok, id }` or `{ ok: false, error }` |
+| `canvas:clear` | | `{ ok, removed }` or `{ ok: false, error }` |
 
 Server to client:
 
 | Event | Payload | Meaning |
 |---|---|---|
 | `stroke:added` | stroke | Another participant added a stroke |
+| `stroke:removed` | stroke id | Another participant undid a stroke |
+| `canvas:cleared` | | The owner cleared the canvas |
 | `canvas:peers` | number | Participants in the canvas |
 | `canvas:unshared` | | The canvas became private and you were removed |
 | `canvas:deleted` | | The canvas was deleted and you were removed |
 
-A socket must join a canvas before adding strokes and is in one canvas at a time. Senders do not receive their own strokes. After a reconnect, join again to load missed strokes.
+A socket must join a canvas before adding strokes and is in one canvas at a time. Senders do not receive their own strokes or their own undo and clear events. After a reconnect, join again to load missed strokes.
+
+`stroke:undo` removes the caller's most recent stroke in the canvas. The owner counts as one author across connections, and each guest counts as their own for the length of the connection. Strokes added over REST cannot be undone. `canvas:clear` and `DELETE /api/canvas/:id/strokes` remove every stroke of the canvas.
 
 ### Models
 

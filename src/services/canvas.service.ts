@@ -67,12 +67,16 @@ export async function listPublicCanvases(): Promise<PublicCanvas[]> {
  * Only the owner may rename, share/unshare or delete a canvas. Canvases created before owner
  * tokens existed have no owner and stay open to everyone.
  */
-async function getManageableCanvas(id: string, ownerToken?: unknown): Promise<AccessResult> {
+async function getManageableCanvas(
+  id: string,
+  ownerToken?: unknown,
+  verifiedOwner = false,
+): Promise<AccessResult> {
   if (!isValidCanvasId(id)) return { ok: false, status: 400, error: 'Invalid canvas id' };
   const canvas = await findCanvas(id);
   if (!canvas) return { ok: false, status: 404, error: 'Canvas not found' };
 
-  const owner = isOwner(canvas, ownerToken);
+  const owner = verifiedOwner || isOwner(canvas, ownerToken);
   if (canvas.ownerTokenHash && !owner)
     return { ok: false, status: 403, error: 'Only the owner can change this canvas' };
   return { ok: true, canvas, isOwner: owner };
@@ -104,4 +108,21 @@ export async function deleteCanvasWithStrokes(
   await deleteStrokesByCanvas(id);
   canvasEvents.emit('deleted', id);
   return { ok: true };
+}
+
+/**
+ * Removes every stroke of a canvas (owner only) and tells the other participants. A socket that
+ * already proved ownership when it joined passes `verifiedOwner` instead of the token.
+ */
+export async function clearCanvasStrokes(
+  id: string,
+  auth: { ownerToken?: unknown; verifiedOwner?: boolean },
+  senderSocketId?: string,
+): Promise<{ ok: true; removed: number } | Failure> {
+  const allowed = await getManageableCanvas(id, auth.ownerToken, auth.verifiedOwner);
+  if (!allowed.ok) return allowed;
+
+  const removed = await deleteStrokesByCanvas(id);
+  canvasEvents.emit('cleared', id, senderSocketId);
+  return { ok: true, removed };
 }

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getAccessibleCanvas } from '../services/canvas.service.js';
+import { clearCanvasStrokes, getAccessibleCanvas } from '../services/canvas.service.js';
 import { listStrokeMessages, saveStroke } from '../services/stroke.service.js';
 import { parseStroke } from '../validation/stroke.validation.js';
 import { ownerTokenOf } from './canvas.routes.js';
@@ -26,4 +26,11 @@ strokeRouter.get('/:id/strokes', async (req, res) => {
   if (!access.ok) return res.status(access.status).json({ error: access.error });
 
   res.json(await listStrokeMessages(req.params.id));
+});
+
+// DELETE /api/canvas/:id/strokes (clear the canvas; owner only)
+strokeRouter.delete('/:id/strokes', async (req, res) => {
+  const result = await clearCanvasStrokes(req.params.id, { ownerToken: ownerTokenOf(req) });
+  if (!result.ok) return res.status(result.status).json({ error: result.error });
+  res.json({ ok: true, removed: result.removed });
 });

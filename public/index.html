@@ -22,6 +22,8 @@
     <button id="join">Join</button>
     <input id="color" type="color" value="#222222">
     <input id="size" type="range" min="1" max="40" value="4">
+    <button id="undo" disabled>Undo</button>
+    <button id="clear" disabled>Clear</button>
     <span id="status">not connected</span>
   </div>
   <canvas id="board" width="900" height="600"></canvas>
@@ -38,6 +40,7 @@
     let isShared = false;
     let isOwner = false;
     let peers = 0;
+    let strokes = []; // what is on the board; redrawn after an undo or a clear
 
     // The owner token is returned once when a canvas is created; it lets the owner back into
     // the canvas while it is private (solo mode). Kept in localStorage per canvas.
@@ -49,6 +52,8 @@
     function showMode() {
       $('shared').checked = isShared;
       $('shared').disabled = !canvasId || !isOwner; // only the owner can share / unshare
+      $('undo').disabled = !canvasId;
+      $('clear').disabled = !canvasId || !isOwner; // only the owner can clear
       $('mode').textContent = !canvasId ? '' :
         !isShared ? 'solo mode' :
         peers > 1 ? `collaboration mode (${peers} here)` : 'shared, waiting for others';
@@ -68,6 +73,11 @@
       ctx.restore();
     }
 
+    function redraw() {
+      ctx.clearRect(0, 0, board.width, board.height);
+      strokes.forEach(drawStroke);
+    }
+
     function join(id) {
       const token = getToken(id);
       socket.emit('canvas:join', id, token ? { ownerToken: token } : {}, (res) => {
@@ -77,8 +87,8 @@
         isOwner = res.isOwner;
         $('canvasId').value = id;
         history.replaceState(null, '', `?canvas=${id}`);
-        ctx.clearRect(0, 0, board.width, board.height);
-        res.strokes.forEach(drawStroke);
+        strokes = res.strokes;
+        redraw();
         setStatus(`joined ${id}${isOwner ? ' (owner)' : ''}`);
         showMode();
       });
@@ -97,7 +107,10 @@
     $('join').onclick = () => join($('canvasId').value.trim());
 
     // another participant finished a stroke
-    socket.on('stroke:added', drawStroke);
+    socket.on('stroke:added', (s) => { strokes.push(s); drawStroke(s); });
+    // a participant undid a stroke, or the owner cleared the canvas
+    socket.on('stroke:removed', (id) => { strokes = strokes.filter((s) => s.id !== id); redraw(); });
+    socket.on('canvas:cleared', () => { strokes = []; redraw(); });
     socket.on('canvas:peers', (n) => { peers = n; showMode(); });
     // the owner made the canvas private: we were removed from it
     socket.on('canvas:unshared', () => {
@@ -124,6 +137,27 @@
       if (r.ok) isShared = want;
       showMode();
     };
+    // undo your latest stroke (button or Ctrl/Cmd+Z); the owner can clear everything
+    function undo() {
+      if (!canvasId) return;
+      socket.emit('stroke:undo', (res) => {
+        if (!res.ok) return setStatus(res.error);
+        strokes = strokes.filter((s) => s.id !== res.id);
+        redraw();
+      });
+    }
+    $('undo').onclick = undo;
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
+    });
+    $('clear').onclick = () => {
+      socket.emit('canvas:clear', (res) => {
+        if (!res.ok) return setStatus(res.error);
+        strokes = [];
+        redraw();
+      });
+    };
+
     // reconnect (e.g. server restart): rejoin to get missed strokes
     socket.on('connect', () => canvasId && join(canvasId));
 
@@ -150,7 +184,13 @@
       const stroke = current;
       current = null;
       drawStroke(stroke);
-      socket.emit('stroke:add', stroke, (res) => { if (!res.ok) setStatus(res.error); });
+      strokes.push(stroke);
+      socket.emit('stroke:add', stroke, (res) => {
+        if (res.ok) return void (stroke.id = res.id); // the id is what undo and other clients refer to
+        strokes = strokes.filter((s) => s !== stroke);
+        redraw();
+        setStatus(res.error);
+      });
     };
     board.addEventListener('pointerup', finish);
     board.addEventListener('pointercancel', finish);
