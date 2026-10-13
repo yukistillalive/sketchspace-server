@@ -2,13 +2,13 @@ import { Router } from 'express';
 import { getAccessibleCanvas } from '../services/canvas.service.js';
 import { addElement, deleteElement, listElementMessages, updateElement } from '../services/element.service.js';
 import { parseElement, parseElementUpdate } from '../validation/element.validation.js';
-import { ownerTokenOf } from './canvas.routes.js';
+import { ownerTokenOf, userIdOf } from './canvas.routes.js';
 
 export const elementRouter = Router();
 
 // GET /api/canvas/:id/elements (a private canvas needs the owner token)
 elementRouter.get('/:id/elements', async (req, res) => {
-  const access = await getAccessibleCanvas(req.params.id, ownerTokenOf(req));
+  const access = await getAccessibleCanvas(req.params.id, ownerTokenOf(req), userIdOf(req));
   if (!access.ok) return res.status(access.status).json({ error: access.error });
 
   res.json(await listElementMessages(req.params.id));
@@ -16,7 +16,7 @@ elementRouter.get('/:id/elements', async (req, res) => {
 
 // POST /api/canvas/:id/elements (a private canvas needs the owner token)
 elementRouter.post('/:id/elements', async (req, res) => {
-  const access = await getAccessibleCanvas(req.params.id, ownerTokenOf(req));
+  const access = await getAccessibleCanvas(req.params.id, ownerTokenOf(req), userIdOf(req));
   if (!access.ok) return res.status(access.status).json({ error: access.error });
 
   const body = typeof req.body === 'object' && req.body !== null ? req.body : {};
@@ -30,7 +30,7 @@ elementRouter.post('/:id/elements', async (req, res) => {
 
 // PUT /api/canvas/:id/elements/:elementId (partial update; last write wins)
 elementRouter.put('/:id/elements/:elementId', async (req, res) => {
-  const access = await getAccessibleCanvas(req.params.id, ownerTokenOf(req));
+  const access = await getAccessibleCanvas(req.params.id, ownerTokenOf(req), userIdOf(req));
   if (!access.ok) return res.status(access.status).json({ error: access.error });
 
   const changes = parseElementUpdate(req.body);
@@ -43,7 +43,7 @@ elementRouter.put('/:id/elements/:elementId', async (req, res) => {
 
 // DELETE /api/canvas/:id/elements/:elementId
 elementRouter.delete('/:id/elements/:elementId', async (req, res) => {
-  const access = await getAccessibleCanvas(req.params.id, ownerTokenOf(req));
+  const access = await getAccessibleCanvas(req.params.id, ownerTokenOf(req), userIdOf(req));
   if (!access.ok) return res.status(access.status).json({ error: access.error });
 
   const result = await deleteElement(req.params.id, req.params.elementId);

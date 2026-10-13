@@ -11,7 +11,7 @@ Backend for Sketchspace, a collaborative collage doodling app. A canvas is a roo
 | Base URL | `http://localhost:3000` |
 | Format | JSON |
 | Authentication | Owner token, no accounts |
-| CORS | Origins listed in `CLIENT_ORIGIN` |
+| CORS | Origins listed in `CLIENT_ORIGIN`, credentials allowed |
 
 ### REST or socket
 
@@ -71,6 +71,10 @@ socket.on('element:deleted', removeElement);
 
 `POST /api/canvas` returns an `ownerToken` once; only its hash is stored. Send it as the `X-Owner-Token` header on REST requests and as `{ ownerToken }` in `canvas:join`.
 
+The login cookie (`token`, set by `/api/auth/*`) is `httpOnly`. A browser frontend on another origin must send requests with credentials (`fetch(..., { credentials: 'include' })`, `io(url, { withCredentials: true })`), and its exact origin must be listed in `CLIENT_ORIGIN`. Wildcard origins are not supported.
+
+A canvas created while logged in also belongs to that account, so its owner can open and manage it from any device without the owner token. A guest's canvas belongs to the owner token only. `POST /api/canvas/:id/claim` (logged in, with the canvas's `X-Owner-Token`) attaches a token-owned canvas to the account. `canvas:join` takes the login from the cookie sent with the socket connection; reconnect the socket after logging in or out.
+
 Access levels: **Anyone**; **Shared** (anyone on a shared canvas, only the owner on a private one); **Owner** (only the owner).
 
 ### REST endpoints
@@ -82,7 +86,9 @@ Errors return `{ error }` with status `400` (invalid id or body), `403` (private
 | GET | `/health` | | `200 { ok }` | Anyone |
 | POST | `/api/canvas` | `{ name?, isShared? }` | `201 { canvasId, ownerToken }` | Anyone |
 | GET | `/api/canvas` | | `200` shared canvases | Anyone |
-| GET | `/api/canvas/:id` | | `200` canvas | Shared |
+| GET | `/api/canvas/mine` | | `200` the logged-in user's canvases, shared and private | Logged in |
+| GET | `/api/canvas/:id` | | `200` canvas with `isOwner` | Shared |
+| POST | `/api/canvas/:id/claim` | | `200 { ok }` | Logged in + owner token |
 | PUT | `/api/canvas/:id` | `{ name?, isShared? }` | `200 { ok }` | Owner |
 | DELETE | `/api/canvas/:id` | | `200 { ok }` | Owner |
 | GET | `/api/canvas/:id/strokes` | | `200` strokes, oldest first | Shared |
@@ -221,6 +227,7 @@ Open `http://localhost:3000` for the demo client.
 | `npm test` | Run all tests |
 | `npm run test:socket` | Socket tests only |
 | `npm run test:service` | Service tests only |
+| `npm run test:ownership` | Account ownership tests only |
 
 ## Project structure
 

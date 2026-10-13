@@ -3,6 +3,7 @@
 import type { Server, Socket } from 'socket.io';
 import { canvasEvents } from '../services/canvas.events.js';
 import { clearCanvasStrokes, getAccessibleCanvas } from '../services/canvas.service.js';
+import { userIdFromCookieHeader } from '../middleware/auth.middleware.js';
 import {
   addElement,
   deleteElement,
@@ -80,6 +81,8 @@ interface SocketData {
   canvasId?: string;
   /** True if this socket proved ownership of that canvas when it joined. */
   isOwner?: boolean;
+  /** The logged-in user, read from the login cookie sent when the socket connected. */
+  userId?: string;
 }
 
 type CanvasServer = Server<ClientToServerEvents, ServerToClientEvents, {}, SocketData>;
@@ -146,12 +149,15 @@ export function registerCanvasSocket(io: CanvasServer): void {
   });
 
   io.on('connection', (socket) => {
+    // who is logged in is fixed for the life of the connection: after a login or logout the client reconnects
+    socket.data.userId = userIdFromCookieHeader(socket.handshake.headers.cookie) ?? undefined;
+
     // Join: validate (shared, or private + owner token) -> enter the room -> reply with the saved strokes.
     socket.on('canvas:join', async (canvasId, optionsOrAck, maybeAck) => {
       const ack = typeof optionsOrAck === 'function' ? optionsOrAck : maybeAck;
       if (typeof ack !== 'function') return; // ignore requests without an ack callback
       const options = typeof optionsOrAck === 'object' && optionsOrAck !== null ? optionsOrAck : {};
-      const joinable = await getAccessibleCanvas(canvasId, options.ownerToken);
+      const joinable = await getAccessibleCanvas(canvasId, options.ownerToken, socket.data.userId);
       if (!joinable.ok) return ack({ ok: false, error: joinable.error });
 
       leaveCurrent(socket); // a socket sketches in one canvas at a time

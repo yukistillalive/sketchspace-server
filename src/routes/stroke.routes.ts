@@ -2,13 +2,13 @@ import { Router } from 'express';
 import { clearCanvasStrokes, getAccessibleCanvas } from '../services/canvas.service.js';
 import { deleteStrokeById, listStrokeMessages, saveStroke } from '../services/stroke.service.js';
 import { parseStroke } from '../validation/stroke.validation.js';
-import { ownerTokenOf } from './canvas.routes.js';
+import { ownerTokenOf, userIdOf } from './canvas.routes.js';
 
 export const strokeRouter = Router();
 
 // POST /api/canvas/:id/strokes (a private canvas needs the owner token)
 strokeRouter.post('/:id/strokes', async (req, res) => {
-  const access = await getAccessibleCanvas(req.params.id, ownerTokenOf(req));
+  const access = await getAccessibleCanvas(req.params.id, ownerTokenOf(req), userIdOf(req));
   if (!access.ok) return res.status(access.status).json({ error: access.error });
 
   const body = typeof req.body === 'object' && req.body !== null ? req.body : {};
@@ -22,7 +22,7 @@ strokeRouter.post('/:id/strokes', async (req, res) => {
 
 // GET /api/canvas/:id/strokes (a private canvas needs the owner token)
 strokeRouter.get('/:id/strokes', async (req, res) => {
-  const access = await getAccessibleCanvas(req.params.id, ownerTokenOf(req));
+  const access = await getAccessibleCanvas(req.params.id, ownerTokenOf(req), userIdOf(req));
   if (!access.ok) return res.status(access.status).json({ error: access.error });
 
   res.json(await listStrokeMessages(req.params.id));
@@ -30,14 +30,14 @@ strokeRouter.get('/:id/strokes', async (req, res) => {
 
 // DELETE /api/canvas/:id/strokes (clear the canvas; owner only)
 strokeRouter.delete('/:id/strokes', async (req, res) => {
-  const result = await clearCanvasStrokes(req.params.id, { ownerToken: ownerTokenOf(req) });
+  const result = await clearCanvasStrokes(req.params.id, { ownerToken: ownerTokenOf(req), userId: userIdOf(req) });
   if (!result.ok) return res.status(result.status).json({ error: result.error });
   res.json({ ok: true, removed: result.removed });
 });
 
 // DELETE /api/canvas/:id/strokes/:strokeId (a private canvas needs the owner token)
 strokeRouter.delete('/:id/strokes/:strokeId', async (req, res) => {
-  const access = await getAccessibleCanvas(req.params.id, ownerTokenOf(req));
+  const access = await getAccessibleCanvas(req.params.id, ownerTokenOf(req), userIdOf(req));
   if (!access.ok) return res.status(access.status).json({ error: access.error });
 
   const result = await deleteStrokeById(req.params.id, req.params.strokeId);
