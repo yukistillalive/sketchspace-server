@@ -1,0 +1,20 @@
+$kind: http-request
+method: PUT
+url: '{{baseUrl}}/api/users/me'
+order: 26000
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: Authorization
+    value: 'Bearer {{token}}'
+body:
+  type: json
+  content: |-
+    {"avatarUrl": "http://insecure.example.com/a.png"}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('400 for a non-https avatar url', () => {
+        pm.response.to.have.status(400);
+      });

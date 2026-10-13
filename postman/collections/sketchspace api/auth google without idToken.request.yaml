@@ -1,0 +1,18 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/auth/google'
+order: 27000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('400 (or 503 if Google sign-in is not configured)', () => {
+        pm.expect(pm.response.code).to.be.oneOf([400, 503]);
+      });

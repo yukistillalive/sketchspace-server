@@ -1,0 +1,27 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/auth/register'
+order: 14000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {"email": "{{userEmail}}", "password": "sketch123", "displayName": "Postman User"}
+scripts:
+  - type: beforeRequest
+    language: text/javascript
+    code: |-
+      pm.collectionVariables.set('userEmail', 'postman' + Date.now() + '@example.com');
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('201, token and user without password hash', () => {
+        pm.response.to.have.status(201);
+        const body = pm.response.json();
+        pm.expect(body.token).to.be.a('string').and.have.length.above(20);
+        pm.expect(body.user.email).to.eql(pm.collectionVariables.get('userEmail'));
+        pm.expect(body.user).to.not.have.property('passwordHash');
+        pm.collectionVariables.set('token', body.token);
+      });
