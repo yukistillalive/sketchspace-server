@@ -1,0 +1,12 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/users/me'
+order: 13000
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('401 without a token', () => {
+        pm.response.to.have.status(401);
+        pm.expect(pm.response.json().error).to.be.a('string');
+      });

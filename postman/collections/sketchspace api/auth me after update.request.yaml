@@ -1,0 +1,15 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/users/me'
+order: 24000
+headers:
+  - key: Authorization
+    value: 'Bearer {{token}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('the change was persisted', () => {
+        pm.response.to.have.status(200);
+        pm.expect(pm.response.json().displayName).to.eql('Renamed User');
+      });

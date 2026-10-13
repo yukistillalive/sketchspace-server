@@ -1,0 +1,38 @@
+// Regex-based input filtering. Everything a client sends for accounts goes through here
+// before it is stored: clients are untrusted.
+
+// local part (max 64 chars, no spaces/@) @ domain . tld (2+ chars)
+const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]+\.[^\s@]{2,}$/;
+// 8-128 chars with at least one letter and one digit
+const PASSWORD_RE = /^(?=.*\p{L})(?=.*\d).{8,128}$/u;
+// 2-30 chars: letters, digits, space, _ . - ; must start with a letter or digit
+const DISPLAY_NAME_RE = /^[\p{L}\p{N}][\p{L}\p{N} _.-]{1,29}$/u;
+// https only, no whitespace
+const AVATAR_URL_RE = /^https:\/\/\S{1,500}$/;
+// a MongoDB ObjectId as a string
+const USER_ID_RE = /^[0-9a-f]{24}$/i;
+// characters not allowed in a display name (used to clean names coming from Google)
+const DISPLAY_NAME_FORBIDDEN_RE = /[^\p{L}\p{N} _.-]/gu;
+
+export const isValidEmail = (v: unknown): v is string =>
+  typeof v === 'string' && v.length <= 254 && EMAIL_RE.test(v);
+
+export const isValidPassword = (v: unknown): v is string => typeof v === 'string' && PASSWORD_RE.test(v);
+
+export const isValidDisplayName = (v: unknown): v is string =>
+  typeof v === 'string' && DISPLAY_NAME_RE.test(v);
+
+export const isValidAvatarUrl = (v: unknown): v is string => typeof v === 'string' && AVATAR_URL_RE.test(v);
+
+export const isValidUserId = (v: unknown): v is string => typeof v === 'string' && USER_ID_RE.test(v);
+
+/** Emails are compared case-insensitively, so they are stored trimmed and lower-case. */
+export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
+
+/** Turns a free-form name (e.g. from Google) into a valid display name, with fallbacks. */
+export function toDisplayName(name: string | undefined, email: string): string {
+  const fromName = (name ?? '').replace(DISPLAY_NAME_FORBIDDEN_RE, '').trim().slice(0, 30);
+  if (isValidDisplayName(fromName)) return fromName;
+  const fromEmail = (email.split('@')[0] ?? '').replace(DISPLAY_NAME_FORBIDDEN_RE, '').slice(0, 30);
+  return isValidDisplayName(fromEmail) ? fromEmail : 'Artist';
+}

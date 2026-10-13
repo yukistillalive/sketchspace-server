@@ -1,0 +1,15 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/users/me'
+order: 22000
+headers:
+  - key: Authorization
+    value: Bearer not.a.token
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('401 for an invalid token', () => {
+        pm.response.to.have.status(401);
+        pm.expect(pm.response.json().error).to.match(/invalid|expired/i);
+      });
