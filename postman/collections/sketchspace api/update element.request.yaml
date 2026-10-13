@@ -1,0 +1,21 @@
+$kind: http-request
+method: PUT
+url: '{{baseUrl}}/api/canvas/{{canvasId}}/elements/{{elementId}}'
+order: 7956
+headers:
+  - key: Content-Type
+    value: 'application/json'
+  - key: X-Owner-Token
+    value: '{{ownerToken}}'
+body:
+  type: json
+  content: |-
+    {"x":42,"color":"#00ff00"}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('200 and ok', () => {
+        pm.response.to.have.status(200);
+        pm.expect(pm.response.json()).to.eql({ ok: true });
+      });

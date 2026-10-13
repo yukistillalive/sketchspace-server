@@ -1,7 +1,13 @@
 $kind: collection
 name: Sketchspace API
-description: REST tests for the canvas endpoints. Run the requests in order; the create request stores canvasId for the later ones.
+description: REST tests for the canvas, stroke and element endpoints. Run the requests in order; the create request stores canvasId for the later ones.
 variables:
   - key: canvasId
     value: ''
     description: Set by the "create canvas" request
+  - key: strokeId
+    value: ''
+    description: Set by the "add stroke to delete" request
+  - key: elementId
+    value: ''
+    description: Set by the "add element" request

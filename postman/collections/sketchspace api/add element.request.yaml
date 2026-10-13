@@ -1,0 +1,23 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/canvas/{{canvasId}}/elements'
+order: 7950
+headers:
+  - key: Content-Type
+    value: 'application/json'
+  - key: X-Owner-Token
+    value: '{{ownerToken}}'
+body:
+  type: json
+  content: |-
+    {"type":"shape","x":10,"y":20,"width":100,"height":50,"rotation":0,"zIndex":1,"shape":"circle","color":null}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('201 and returns elementId', () => {
+        pm.response.to.have.status(201);
+        const id = pm.response.json().elementId;
+        pm.expect(id).to.be.a('string').and.have.length.above(0);
+        pm.collectionVariables.set('elementId', id);
+      });

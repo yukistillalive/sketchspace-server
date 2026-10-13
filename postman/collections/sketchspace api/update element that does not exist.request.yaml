@@ -1,0 +1,20 @@
+$kind: http-request
+method: PUT
+url: '{{baseUrl}}/api/canvas/{{canvasId}}/elements/6abe45dcc09e70d0e46e4bbb'
+order: 7959
+headers:
+  - key: Content-Type
+    value: 'application/json'
+  - key: X-Owner-Token
+    value: '{{ownerToken}}'
+body:
+  type: json
+  content: |-
+    {"x":1}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('404 for an unknown element', () => {
+        pm.response.to.have.status(404);
+      });

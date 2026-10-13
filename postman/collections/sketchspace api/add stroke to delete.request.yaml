@@ -1,0 +1,21 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/canvas/{{canvasId}}/strokes'
+order: 7940
+headers:
+  - key: Content-Type
+    value: 'application/json'
+  - key: X-Owner-Token
+    value: '{{ownerToken}}'
+body:
+  type: json
+  content: |-
+    {"layerId":"foreground","brush":"pen","size":4,"color":"#222222","opacity":1,"path":[{"x":1,"y":2},{"x":3,"y":4}]}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('201 and returns strokeId', () => {
+        pm.response.to.have.status(201);
+        pm.collectionVariables.set('strokeId', pm.response.json().strokeId);
+      });

@@ -1,16 +1,26 @@
 // Real-time layer. A canvas is a sketching room: sockets join it by canvas id, finished
-// strokes are saved (stroke.repository) and relayed to everyone else in the room.
+// strokes and placed elements are saved and relayed to everyone else in the room.
 import type { Server, Socket } from 'socket.io';
 import { canvasEvents } from '../services/canvas.events.js';
 import { clearCanvasStrokes, getAccessibleCanvas } from '../services/canvas.service.js';
 import {
+  addElement,
+  deleteElement,
+  listElementMessages,
+  updateElement,
+  type ElementMessage,
+} from '../services/element.service.js';
+import {
+  deleteStrokeById,
   listStrokeMessages,
   saveStroke,
   undoLastStroke,
   type Sender,
   type StrokeMessage,
 } from '../services/stroke.service.js';
+import type { ElementUpdate, NewElement } from '../repositories/element.repository.js';
 import type { NewStroke } from '../repositories/stroke.repository.js';
+import { parseElement, parseElementUpdate } from '../validation/element.validation.js';
 import { parseStroke } from '../validation/stroke.validation.js';
 
 // Every client request gets an acknowledgement: { ok: true, ...data } or { ok: false, error }.
@@ -20,7 +30,12 @@ type Ack<T> = (result: ({ ok: true } & T) | { ok: false; error: string }) => voi
 interface JoinOptions {
   ownerToken?: string;
 }
-type JoinAck = Ack<{ strokes: StrokeMessage[]; isShared: boolean; isOwner: boolean }>;
+type JoinAck = Ack<{
+  strokes: StrokeMessage[];
+  elements: ElementMessage[];
+  isShared: boolean;
+  isOwner: boolean;
+}>;
 
 // Events the client sends (the server listens for these)
 interface ClientToServerEvents {
@@ -30,6 +45,12 @@ interface ClientToServerEvents {
   'stroke:add': (stroke: NewStroke, ack: Ack<{ id: string }>) => void;
   /** Removes the sender's most recent stroke. */
   'stroke:undo': (ack: Ack<{ id: string }>) => void;
+  /** Removes one stroke by id. */
+  'stroke:delete': (strokeId: string, ack: Ack<{}>) => void;
+  'element:add': (element: NewElement, ack: Ack<{ id: string }>) => void;
+  /** Partial change; last write wins. */
+  'element:update': (elementId: string, changes: ElementUpdate, ack: Ack<{}>) => void;
+  'element:delete': (elementId: string, ack: Ack<{}>) => void;
   /** Removes every stroke of the canvas. Owner only. */
   'canvas:clear': (ack: Ack<{ removed: number }>) => void;
 }
@@ -39,6 +60,12 @@ interface ServerToClientEvents {
   'stroke:added': (stroke: StrokeMessage) => void;
   /** A participant undid a stroke. */
   'stroke:removed': (strokeId: string) => void;
+  /** A participant deleted a stroke. */
+  'stroke:deleted': (strokeId: string) => void;
+  'element:added': (element: ElementMessage) => void;
+  /** The element's new state (all fields). */
+  'element:updated': (element: ElementMessage) => void;
+  'element:deleted': (elementId: string) => void;
   /** The owner cleared the canvas. */
   'canvas:cleared': () => void;
   'canvas:peers': (count: number) => void;
@@ -101,6 +128,14 @@ export function registerCanvasSocket(io: CanvasServer): void {
   // A stroke was undone, or the canvas was cleared.
   canvasEvents.on('strokeRemoved', (canvasId, strokeId, senderSocketId) =>
     others(canvasId, senderSocketId).emit('stroke:removed', strokeId));
+  canvasEvents.on('strokeDeleted', (canvasId, strokeId, senderSocketId) =>
+    others(canvasId, senderSocketId).emit('stroke:deleted', strokeId));
+  canvasEvents.on('elementAdded', (element, senderSocketId) =>
+    others(element.canvasId, senderSocketId).emit('element:added', element));
+  canvasEvents.on('elementUpdated', (element, senderSocketId) =>
+    others(element.canvasId, senderSocketId).emit('element:updated', element));
+  canvasEvents.on('elementDeleted', (canvasId, elementId, senderSocketId) =>
+    others(canvasId, senderSocketId).emit('element:deleted', elementId));
   canvasEvents.on('cleared', (canvasId, senderSocketId) =>
     others(canvasId, senderSocketId).emit('canvas:cleared'));
 
@@ -130,6 +165,7 @@ export function registerCanvasSocket(io: CanvasServer): void {
         isShared: joinable.canvas.isShared,
         isOwner: joinable.isOwner,
         strokes: await listStrokeMessages(canvasId),
+        elements: await listElementMessages(canvasId),
       });
       announcePeers(canvasId);
     });
@@ -149,6 +185,46 @@ export function registerCanvasSocket(io: CanvasServer): void {
       // Saved, then pushed to the others by the 'strokeAdded' listener above (not back to us).
       const saved = await saveStroke(stroke, senderOf(socket));
       ack(saved);
+    });
+
+    // Delete one stroke by id: must be in a canvas; the others are told.
+    socket.on('stroke:delete', async (strokeId, ack) => {
+      if (typeof ack !== 'function') return;
+      const { canvasId } = socket.data;
+      if (!canvasId) return ack({ ok: false, error: 'Join the canvas first' });
+      const deleted = await deleteStrokeById(canvasId, strokeId, socket.id);
+      ack(deleted.ok ? { ok: true } : { ok: false, error: deleted.error });
+    });
+
+    // Elements: validate -> must be in that canvas -> save (the others are notified) -> ack the sender.
+    socket.on('element:add', async (raw, ack) => {
+      if (typeof ack !== 'function') return;
+      const element = parseElement(raw);
+      if (!element) return ack({ ok: false, error: 'Invalid element' });
+      if (element.canvasId !== socket.data.canvasId)
+        return ack({ ok: false, error: 'Join the canvas before adding elements' });
+
+      const saved = await addElement(element, socket.id);
+      ack(saved.ok ? saved : { ok: false, error: saved.error });
+    });
+
+    socket.on('element:update', async (elementId, raw, ack) => {
+      if (typeof ack !== 'function') return;
+      const { canvasId } = socket.data;
+      if (!canvasId) return ack({ ok: false, error: 'Join the canvas before changing elements' });
+      const changes = parseElementUpdate(raw);
+      if (!changes) return ack({ ok: false, error: 'Invalid element changes' });
+
+      const updated = await updateElement(canvasId, elementId, changes, socket.id);
+      ack(updated.ok ? { ok: true } : { ok: false, error: updated.error });
+    });
+
+    socket.on('element:delete', async (elementId, ack) => {
+      if (typeof ack !== 'function') return;
+      const { canvasId } = socket.data;
+      if (!canvasId) return ack({ ok: false, error: 'Join the canvas before changing elements' });
+      const deleted = await deleteElement(canvasId, elementId, socket.id);
+      ack(deleted.ok ? { ok: true } : { ok: false, error: deleted.error });
     });
 
     // Undo: remove your most recent stroke in this canvas; the others are told.

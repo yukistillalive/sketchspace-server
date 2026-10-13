@@ -1,0 +1,11 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/canvas/{{canvasId}}/elements'
+order: 7955
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('403 for a private canvas without the token', () => {
+        pm.response.to.have.status(403);
+      });

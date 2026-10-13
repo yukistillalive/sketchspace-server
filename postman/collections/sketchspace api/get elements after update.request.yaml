@@ -1,0 +1,19 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/canvas/{{canvasId}}/elements'
+order: 7960
+headers:
+  - key: X-Owner-Token
+    value: '{{ownerToken}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('200 and the first element has the new values', () => {
+        pm.response.to.have.status(200);
+        const first = pm.response.json()[0];
+        pm.expect(first.x).to.eql(42);
+        pm.expect(first.color).to.eql('#00ff00');
+        pm.expect(first.width).to.eql(100);
+        pm.expect(new Date(first.updatedAt).getTime()).to.be.above(new Date(first.createdAt).getTime() - 1);
+      });

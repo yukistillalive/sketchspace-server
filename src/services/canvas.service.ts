@@ -14,6 +14,7 @@ import {
   type NewCanvas,
   type PublicCanvas,
 } from '../repositories/canvas.repository.js';
+import { deleteElementsByCanvas } from '../repositories/element.repository.js';
 import { deleteStrokesByCanvas } from '../repositories/stroke.repository.js';
 import { canvasEvents } from './canvas.events.js';
 
@@ -96,7 +97,7 @@ export async function updateCanvasAndNotify(
   return { ok: true };
 }
 
-/** Deletes a canvas together with its strokes (owner only) and removes everyone from it. */
+/** Deletes a canvas together with its strokes and elements (owner only) and removes everyone from it. */
 export async function deleteCanvasWithStrokes(
   id: string,
   ownerToken?: unknown,
@@ -106,6 +107,7 @@ export async function deleteCanvasWithStrokes(
 
   if (!(await deleteCanvas(id))) return { ok: false, status: 404, error: 'Canvas not found' };
   await deleteStrokesByCanvas(id);
+  await deleteElementsByCanvas(id);
   canvasEvents.emit('deleted', id);
   return { ok: true };
 }

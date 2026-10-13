@@ -1,0 +1,21 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/canvas/{{canvasId}}/elements'
+order: 7954
+headers:
+  - key: X-Owner-Token
+    value: '{{ownerToken}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('200 and two elements in the socket wire shape, oldest first', () => {
+        pm.response.to.have.status(200);
+        const elements = pm.response.json();
+        pm.expect(elements).to.have.length(2);
+        pm.expect(elements.map(e => e.type)).to.eql(['shape', 'cutout']);
+        pm.expect(elements[0]).to.include.all.keys('id', 'canvasId', 'type', 'x', 'y', 'width', 'height', 'rotation', 'zIndex', 'shape', 'color', 'createdAt', 'updatedAt');
+        pm.expect(elements[0].color).to.eql(null);
+        pm.expect(elements[1].photo).to.include.all.keys('x', 'y', 'width', 'height', 'rotation');
+        pm.expect(elements[0]).to.not.have.property('_id');
+      });

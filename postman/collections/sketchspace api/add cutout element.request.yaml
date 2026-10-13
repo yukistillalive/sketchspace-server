@@ -1,0 +1,21 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/canvas/{{canvasId}}/elements'
+order: 7953
+headers:
+  - key: Content-Type
+    value: 'application/json'
+  - key: X-Owner-Token
+    value: '{{ownerToken}}'
+body:
+  type: json
+  content: |-
+    {"type":"cutout","shape":"circle","x":0,"y":0,"width":200,"height":100,"rotation":15,"zIndex":2,"url":"https://images.unsplash.com/photo-1","photographer":"Ann","photographerLink":"https://unsplash.com/@ann","cutWidth":80,"cutHeight":60,"photo":{"x":-5,"y":5,"width":300,"height":200,"rotation":0}}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('201 and returns elementId', () => {
+        pm.response.to.have.status(201);
+        pm.expect(pm.response.json().elementId).to.be.a('string').and.have.length.above(0);
+      });

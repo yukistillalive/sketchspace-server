@@ -5,6 +5,7 @@ import cookieParser from 'cookie-parser';
 import { Server } from 'socket.io';
 import { connectDB } from './db.js';
 import { canvasRouter } from './routes/canvas.routes.js';
+import { elementRouter } from './routes/element.routes.js';
 import { strokeRouter } from './routes/stroke.routes.js';
 import { registerCanvasSocket } from './socket/canvas.socket.js';
 import { authRouter } from './routes/auth.routes.js';
@@ -29,6 +30,7 @@ app.get('/', (_req, res) => {
 });
 app.use('/api/canvas', canvasRouter);
 app.use('/api/canvas', strokeRouter);
+app.use('/api/canvas', elementRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/users', userRouter);
 

@@ -1,4 +1,4 @@
-import { type Collection, type WithId } from 'mongodb';
+import { ObjectId, type Collection, type WithId } from 'mongodb';
 import { getDb } from '../db.js';
 
 export interface Path {
@@ -43,4 +43,10 @@ export async function deleteStrokesByCanvas(canvasId: string): Promise<number> {
 /** Removes and returns the most recent stroke drawn by `authorId` in a canvas, or null if none. */
 export function deleteLastStrokeByAuthor(canvasId: string, authorId: string): Promise<StrokeDoc | null> {
   return strokes().findOneAndDelete({ canvasId, authorId }, { sort: { createdAt: -1, _id: -1 } });
+}
+
+/** Removes one stroke of a canvas by id. Returns false if no such stroke exists in the canvas. */
+export async function deleteStroke(canvasId: string, strokeId: string): Promise<boolean> {
+  const result = await strokes().deleteOne({ _id: new ObjectId(strokeId), canvasId });
+  return result.deletedCount > 0;
 }

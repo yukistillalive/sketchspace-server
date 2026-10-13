@@ -16,7 +16,10 @@ const { registerCanvasSocket } = await import('../src/socket/canvas.socket.js');
 const { createCanvas } = await import('../src/repositories/canvas.repository.js');
 const { listStrokes } = await import('../src/repositories/stroke.repository.js');
 const { createCanvasWithOwner, updateCanvasAndNotify, deleteCanvasWithStrokes } = await import('../src/services/canvas.service.js');
-const { saveStroke } = await import('../src/services/stroke.service.js');
+const { saveStroke, deleteStrokeById } = await import('../src/services/stroke.service.js');
+const { addElement } = await import('../src/services/element.service.js');
+const { listElements } = await import('../src/repositories/element.repository.js');
+const { parseElement } = await import('../src/validation/element.validation.js');
 
 const WAIT_MS = 2000; // max wait for an event that should arrive
 const QUIET_MS = 150; // how long to wait to prove an event does not arrive
@@ -76,6 +79,11 @@ const stroke = (canvasId: string, over: object = {}) => ({
   ...over,
 });
 
+const element = (canvasId: string, over: object = {}) => ({
+  canvasId, type: 'shape', x: 10, y: 20, width: 100, height: 50, rotation: 0, zIndex: 1,
+  shape: 'circle', color: '#ff0000', ...over,
+});
+
 before(async () => {
   await connectDB();
   await getDb().dropDatabase(); // start clean
@@ -126,6 +134,7 @@ describe('canvas:join', () => {
     const res = await call(s, 'canvas:join', sharedId);
     assert.equal(res.ok, true);
     assert.ok(Array.isArray(res.strokes));
+    assert.ok(Array.isArray(res.elements));
   });
 });
 
@@ -481,5 +490,204 @@ describe('undo and clear', () => {
     assert.equal(res.ok, false);
     assert.match(res.error, /owner/i);
     assert.equal((await listStrokes(canvasId)).length, 1);
+  });
+});
+
+// Deleting one stroke by id (the eraser), as opposed to undo (own latest) and clear (owner, all).
+describe('stroke:delete', () => {
+  it('deletes a stroke by id and tells the others but not the sender', async () => {
+    const { canvasId } = await createCanvasWithOwner({ name: 'erase', isShared: true });
+    const [a, b] = await Promise.all([client(), client()]);
+    await call(a, 'canvas:join', canvasId);
+    await call(b, 'canvas:join', canvasId);
+    const keep = await call(a, 'stroke:add', stroke(canvasId));
+    const doomed = await call(b, 'stroke:add', stroke(canvasId)); // anyone in the canvas may delete it
+
+    const told = next(b, 'stroke:deleted');
+    const echoed = arrives(a, 'stroke:deleted');
+    assert.deepEqual(await call(a, 'stroke:delete', doomed.id), { ok: true });
+    assert.equal(await told, doomed.id);
+    assert.equal(await echoed, false, 'the sender is not told about its own delete');
+    assert.deepEqual((await listStrokes(canvasId)).map((x) => x._id.toString()), [keep.id]);
+
+    const missing = await call(a, 'stroke:delete', doomed.id);
+    assert.deepEqual(missing, { ok: false, error: 'Stroke not found' });
+    assert.equal((await call(a, 'stroke:delete', 'nope')).ok, false);
+  });
+
+  it('is refused before joining a canvas', async () => {
+    const s = await client();
+    assert.equal((await call(s, 'stroke:delete', '6abe45dcc09e70d0e46e4bbb')).ok, false);
+  });
+
+  it('is delivered to participants when deleted through the service (REST)', async () => {
+    const { canvasId } = await createCanvasWithOwner({ name: 'rest-erase', isShared: true });
+    const a = await client();
+    await call(a, 'canvas:join', canvasId);
+    const drawn = await call(a, 'stroke:add', stroke(canvasId));
+    const told = next(a, 'stroke:deleted');
+    assert.deepEqual(await deleteStrokeById(canvasId, drawn.id), { ok: true });
+    assert.equal(await told, drawn.id);
+  });
+});
+
+// Shapes, photos and cutouts: validated, saved, and relayed like strokes.
+describe('elements', () => {
+  const join = async (canvasId: string, ownerToken?: string) => {
+    const s = await client();
+    const res = await (ownerToken ? call(s, 'canvas:join', canvasId, { ownerToken }) : call(s, 'canvas:join', canvasId));
+    return { s, res };
+  };
+
+  it('element:add is saved, acked with an id, relayed to others but not back to the sender', async () => {
+    const { canvasId } = await createCanvasWithOwner({ name: 'el-add', isShared: true });
+    const [{ s: a }, { s: b }] = await Promise.all([join(canvasId), join(canvasId)]);
+
+    const received = next(b, 'element:added');
+    const echoed = arrives(a, 'element:added');
+    const ack = await call(a, 'element:add', element(canvasId, { color: null }));
+    assert.equal(ack.ok, true);
+    assert.equal(typeof ack.id, 'string');
+
+    const msg = await received;
+    assert.equal(msg.id, ack.id);
+    assert.equal(msg.type, 'shape');
+    assert.equal(msg.color, null);
+    assert.equal('_id' in msg, false);
+    assert.equal(await echoed, false, 'sender must not receive its own element');
+    assert.deepEqual((await listElements(canvasId)).map((e) => e._id.toString()), [ack.id]);
+  });
+
+  it('element:add is refused before joining, for another canvas, and for invalid elements', async () => {
+    const { canvasId } = await createCanvasWithOwner({ name: 'el-bad', isShared: true });
+    const other = await createCanvasWithOwner({ name: 'el-other', isShared: true });
+    const loner = await client();
+    assert.equal((await call(loner, 'element:add', element(canvasId))).ok, false, 'not joined');
+
+    const { s } = await join(canvasId);
+    assert.equal((await call(s, 'element:add', element(other.canvasId))).ok, false, 'other canvas');
+    const bad: unknown[] = [
+      element(canvasId, { type: 'sticker' }), element(canvasId, { width: -1 }), element(canvasId, { x: 'a' }),
+      element(canvasId, { shape: 'blob' }), 'hello', null,
+    ];
+    for (const payload of bad) assert.equal((await call(s, 'element:add', payload)).ok, false);
+    assert.equal((await listElements(canvasId)).length, 0);
+  });
+
+  it('element:update changes the element, relays the full new state, and does not echo', async () => {
+    const { canvasId } = await createCanvasWithOwner({ name: 'el-update', isShared: true });
+    const [{ s: a }, { s: b }] = await Promise.all([join(canvasId), join(canvasId)]);
+    const { id } = await call(a, 'element:add', element(canvasId));
+
+    const told = next(b, 'element:updated');
+    const echoed = arrives(a, 'element:updated');
+    assert.deepEqual(await call(a, 'element:update', id, { x: 77, rotation: 45 }), { ok: true });
+    const msg = await told;
+    assert.deepEqual([msg.id, msg.x, msg.rotation, msg.width], [id, 77, 45, 100]);
+    assert.equal(await echoed, false);
+
+    assert.equal((await call(a, 'element:update', id, {})).ok, false, 'empty change');
+    assert.equal((await call(a, 'element:update', id, { width: 0 })).ok, false, 'invalid change');
+    assert.deepEqual(await call(a, 'element:update', '6abe45dcc09e70d0e46e4bbb', { x: 1 }), { ok: false, error: 'Element not found' });
+    assert.equal((await call(a, 'element:update', 'nope', { x: 1 })).ok, false);
+    assert.equal((await listElements(canvasId))[0]!.x, 77);
+  });
+
+  it('element:delete removes the element and tells the others but not the sender', async () => {
+    const { canvasId } = await createCanvasWithOwner({ name: 'el-delete', isShared: true });
+    const [{ s: a }, { s: b }] = await Promise.all([join(canvasId), join(canvasId)]);
+    const { id } = await call(b, 'element:add', element(canvasId));
+
+    const told = next(b, 'element:deleted');
+    const echoed = arrives(a, 'element:deleted');
+    assert.deepEqual(await call(a, 'element:delete', id), { ok: true });
+    assert.equal(await told, id);
+    assert.equal(await echoed, false);
+    assert.equal((await listElements(canvasId)).length, 0);
+    assert.deepEqual(await call(a, 'element:delete', id), { ok: false, error: 'Element not found' });
+  });
+
+  it('update and delete are refused before joining a canvas', async () => {
+    const s = await client();
+    assert.equal((await call(s, 'element:update', '6abe45dcc09e70d0e46e4bbb', { x: 1 })).ok, false);
+    assert.equal((await call(s, 'element:delete', '6abe45dcc09e70d0e46e4bbb')).ok, false);
+  });
+
+  it('cannot touch elements of another canvas', async () => {
+    const mine = await createCanvasWithOwner({ name: 'el-mine', isShared: true });
+    const theirs = await createCanvasWithOwner({ name: 'el-theirs', isShared: true });
+    const added = await addElement(parseElement(element(theirs.canvasId))!);
+    const id = added.ok ? added.id : '';
+    const { s } = await join(mine.canvasId);
+    assert.equal((await call(s, 'element:update', id, { x: 1 })).ok, false);
+    assert.equal((await call(s, 'element:delete', id)).ok, false);
+    assert.equal((await listElements(theirs.canvasId)).length, 1);
+  });
+
+  it('is not delivered to a socket outside the canvas or in another one', async () => {
+    const { canvasId } = await createCanvasWithOwner({ name: 'el-iso', isShared: true });
+    const other = await createCanvasWithOwner({ name: 'el-iso2', isShared: true });
+    const [{ s: a }, outsider, { s: elsewhere }] = await Promise.all([join(canvasId), client(), join(other.canvasId)]);
+    const leaked = Promise.all([arrives(outsider, 'element:added'), arrives(elsewhere, 'element:added')]);
+    await call(a, 'element:add', element(canvasId));
+    assert.deepEqual(await leaked, [false, false]);
+  });
+
+  it('a late joiner gets the elements in the join ack, oldest first, in the same shape as live', async () => {
+    const { canvasId } = await createCanvasWithOwner({ name: 'el-history', isShared: true });
+    const [{ s: a }, { s: b }] = await Promise.all([join(canvasId), join(canvasId)]);
+    const live = next(b, 'element:added');
+    const first = await call(a, 'element:add', element(canvasId));
+    const second = await call(a, 'element:add', element(canvasId, { shape: 'star' }));
+
+    const { res } = await join(canvasId);
+    assert.deepEqual(res.elements.map((e: { id: string }) => e.id), [first.id, second.id]);
+    assert.deepEqual(Object.keys(await live).sort(), Object.keys(res.elements[0]).sort());
+  });
+
+  it('a cutout round-trips with its photo box', async () => {
+    const { canvasId } = await createCanvasWithOwner({ name: 'el-cutout', isShared: true });
+    const { s } = await join(canvasId);
+    const cut = element(canvasId, {
+      type: 'cutout', shape: 'heart', color: undefined, url: 'https://images.unsplash.com/photo-1',
+      photographer: 'Ann', photographerLink: 'https://unsplash.com/@ann', cutWidth: 80, cutHeight: 60,
+      photo: { x: -5, y: 5, width: 300, height: 200, rotation: 10 },
+    });
+    assert.equal((await call(s, 'element:add', cut)).ok, true);
+    const { res } = await join(canvasId);
+    assert.deepEqual(res.elements[0].photo, { x: -5, y: 5, width: 300, height: 200, rotation: 10 });
+    assert.equal(res.elements[0].cutWidth, 80);
+    assert.equal(res.elements[0].shape, 'heart');
+  });
+
+  it('keeps everyone but the owner out of a private canvas, elements included', async () => {
+    const { canvasId, ownerToken } = await createCanvasWithOwner({ name: 'el-solo', isShared: false });
+    const { s, res } = await join(canvasId, ownerToken);
+    assert.equal(res.ok, true);
+    assert.equal((await call(s, 'element:add', element(canvasId))).ok, true);
+
+    const intruder = await client();
+    assert.equal((await call(intruder, 'canvas:join', canvasId)).ok, false);
+    assert.equal((await call(intruder, 'element:add', element(canvasId))).ok, false);
+    assert.equal((await listElements(canvasId)).length, 1);
+  });
+
+  it('element REST saves reach participants already in the canvas', async () => {
+    const { canvasId } = await createCanvasWithOwner({ name: 'el-rest', isShared: true });
+    const { s } = await join(canvasId);
+    const told = next(s, 'element:added');
+    const saved = await addElement(parseElement(element(canvasId))!); // no sender: everyone receives it
+    assert.equal((await told).id, saved.ok && saved.id);
+  });
+
+  it('removes the elements with the canvas', async () => {
+    const { canvasId, ownerToken } = await createCanvasWithOwner({ name: 'el-gone', isShared: true });
+    const { s } = await join(canvasId, ownerToken);
+    await call(s, 'element:add', element(canvasId));
+    const gone = next(s, 'canvas:deleted');
+    assert.deepEqual(await deleteCanvasWithStrokes(canvasId, ownerToken), { ok: true });
+    await gone;
+    assert.equal((await listElements(canvasId)).length, 0);
+    assert.equal((await call(s, 'element:add', element(canvasId))).ok, false);
   });
 });
