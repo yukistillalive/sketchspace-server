@@ -1,0 +1,14 @@
+$kind: http-request
+method: DELETE
+url: '{{baseUrl}}/api/canvas/{{canvasId}}/elements/{{elementId}}'
+order: 7964
+headers:
+  - key: X-Owner-Token
+    value: '{{ownerToken}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('404 once the element is gone', () => {
+        pm.response.to.have.status(404);
+      });

@@ -10,6 +10,9 @@ process.env.MONGODB_URI = testUri;
 const { connectDB, closeDB, getDb } = await import('../src/db.js');
 const { createCanvas, findCanvas, toPublicCanvas } = await import('../src/repositories/canvas.repository.js');
 const { addStroke, listStrokes } = await import('../src/repositories/stroke.repository.js');
+const { addElement: insertElement, listElements } = await import('../src/repositories/element.repository.js');
+const { parseElement, parseElementUpdate } = await import('../src/validation/element.validation.js');
+const { addElement, updateElement, deleteElement, listElementMessages } = await import('../src/services/element.service.js');
 const { canvasEvents } = await import('../src/services/canvas.events.js');
 const {
   getAccessibleCanvas,
@@ -19,16 +22,25 @@ const {
   updateCanvasAndNotify,
   clearCanvasStrokes,
 } = await import('../src/services/canvas.service.js');
-const { saveStroke, undoLastStroke, listStrokeMessages } = await import('../src/services/stroke.service.js');
+const { saveStroke, undoLastStroke, listStrokeMessages, deleteStrokeById } = await import('../src/services/stroke.service.js');
 
 const stroke = (canvasId: string) => ({
   canvasId, layerId: 'foreground', brush: 'pen', size: 4, color: '#000000', opacity: 1,
   path: [{ x: 1, y: 2 }],
 });
+const shape = (canvasId: string, over: object = {}) => ({
+  canvasId, type: 'shape' as const, x: 10, y: 20, width: 100, height: 50, rotation: 0, zIndex: 1,
+  shape: 'circle', color: '#ff0000', ...over,
+});
+const cutout = (canvasId: string, over: object = {}) => ({
+  canvasId, type: 'cutout', x: 0, y: 0, width: 200, height: 100, rotation: 15, zIndex: 2,
+  shape: 'circle', url: 'https://images.unsplash.com/photo-1', photographer: 'Ann', photographerLink: 'https://unsplash.com/@ann',
+  cutWidth: 80, cutHeight: 60, photo: { x: -5, y: 5, width: 300, height: 200, rotation: 0 }, ...over,
+});
 const UNKNOWN_ID = '6abe45dcc09e70d0e46e4bbb';
 
 /** Collects the arguments of a canvasEvents event until `stop()` is called. */
-function record<K extends 'unshared' | 'deleted' | 'strokeAdded' | 'strokeRemoved' | 'cleared'>(event: K) {
+function record<K extends 'unshared' | 'deleted' | 'strokeAdded' | 'strokeRemoved' | 'strokeDeleted' | 'cleared' | 'elementAdded' | 'elementUpdated' | 'elementDeleted'>(event: K) {
   const seen: unknown[][] = [];
   const listener = (...args: unknown[]) => seen.push(args);
   canvasEvents.on(event, listener as never);
@@ -346,5 +358,219 @@ describe('clearCanvasStrokes', () => {
     assert.equal(!unknown.ok && unknown.status, 404);
     const bad = await clearCanvasStrokes('nope', { verifiedOwner: true });
     assert.equal(!bad.ok && bad.status, 400);
+  });
+});
+
+describe('deleteStrokeById', () => {
+  // Removes exactly one stroke of that canvas and tells the others.
+  it('removes one stroke and announces it with its sender', async () => {
+    const { canvasId } = await createCanvasWithOwner({ isShared: true });
+    const a = await saveStroke(stroke(canvasId));
+    const b = await saveStroke(stroke(canvasId));
+    const id = a.ok ? a.id : '';
+    const events = record('strokeDeleted');
+
+    assert.deepEqual(await deleteStrokeById(canvasId, id, 'socket-1'), { ok: true });
+    assert.deepEqual((await listStrokeMessages(canvasId)).map((s) => s.id), [b.ok ? b.id : '']);
+    assert.deepEqual(events.seen, [[canvasId, id, 'socket-1']]);
+    events.stop();
+  });
+
+  // A stroke of another canvas cannot be deleted through this one.
+  it('reports unknown strokes (404), other canvases\' strokes (404) and invalid ids (400)', async () => {
+    const mine = await createCanvasWithOwner({ isShared: true });
+    const other = await createCanvasWithOwner({ isShared: true });
+    const theirs = await saveStroke(stroke(other.canvasId));
+    const theirId = theirs.ok ? theirs.id : '';
+    const events = record('strokeDeleted');
+
+    assert.equal((await deleteStrokeById(mine.canvasId, UNKNOWN_ID) as { status: number }).status, 404);
+    assert.equal((await deleteStrokeById(mine.canvasId, theirId) as { status: number }).status, 404);
+    assert.equal((await deleteStrokeById(UNKNOWN_ID, theirId) as { status: number }).status, 404);
+    assert.equal((await deleteStrokeById(mine.canvasId, 'nope') as { status: number }).status, 400);
+    assert.equal((await deleteStrokeById('nope', theirId) as { status: number }).status, 400);
+    assert.equal((await listStrokeMessages(other.canvasId)).length, 1);
+    assert.deepEqual(events.seen, []);
+    events.stop();
+  });
+});
+
+describe('element validation', () => {
+  const id = UNKNOWN_ID;
+
+  // Each type needs its own fields; extra fields are dropped.
+  it('accepts valid shapes, photos and cutouts and drops unknown fields', () => {
+    assert.ok(parseElement(shape(id)));
+    assert.ok(parseElement(shape(id, { color: null })), 'null color = dashed template');
+    assert.ok(parseElement(shape(id, { color: undefined })));
+    assert.ok(parseElement({ ...shape(id), type: 'photo', url: 'https://images.unsplash.com/x', shape: undefined, color: undefined }));
+    assert.ok(parseElement(cutout(id)));
+    assert.equal(parseElement(cutout(id))!.shape, 'circle', 'cutouts keep their shape');
+    const parsed = parseElement(shape(id, { evil: 1, ownerTokenHash: 'x', url: 'https://a.b' }));
+    assert.deepEqual(Object.keys(parsed!).sort(), ['canvasId', 'color', 'height', 'rotation', 'shape', 'type', 'width', 'x', 'y', 'zIndex']);
+  });
+
+  it('rejects bad types, numbers, sizes, shapes, urls and missing type fields', () => {
+    const bad: unknown[] = [
+      null, 'hello', {},
+      shape(id, { type: 'sticker' }),
+      shape(id, { x: NaN }), shape(id, { x: Infinity }), shape(id, { x: '1' }), shape(id, { x: 1e9 }),
+      shape(id, { width: 0 }), shape(id, { height: -1 }), shape(id, { width: 1e6 }),
+      shape(id, { rotation: 1e9 }), shape(id, { zIndex: undefined }),
+      shape(id, { shape: 'blob' }), shape(id, { shape: undefined }),
+      shape(id, { color: 5 }), shape(id, { color: 'x'.repeat(65) }),
+      shape(id, { canvasId: '' }),
+      cutout(id, { url: 'javascript:alert(1)' }), cutout(id, { url: 'http://insecure.example' }),
+      cutout(id, { url: 'https://a.b/' + 'x'.repeat(2100) }), cutout(id, { url: undefined }), cutout(id, { shape: undefined }), cutout(id, { shape: 'blob' }),
+      cutout(id, { photographer: 'x'.repeat(201) }), cutout(id, { photographerLink: 'not a url' }),
+      cutout(id, { cutWidth: 0 }), cutout(id, { cutHeight: undefined }),
+      cutout(id, { photo: undefined }), cutout(id, { photo: { x: 0, y: 0, width: 0, height: 5, rotation: 0 } }),
+    ];
+    for (const payload of bad) assert.equal(parseElement(payload), null, `should reject ${JSON.stringify(payload)?.slice(0, 80)}`);
+  });
+
+  it('accepts partial updates and rejects empty or invalid ones', () => {
+    assert.deepEqual(parseElementUpdate({ x: 5 }), { x: 5 });
+    assert.deepEqual(parseElementUpdate({ color: null }), { color: null });
+    assert.deepEqual(parseElementUpdate({ x: 1, canvasId: 'other', type: 'photo', junk: 1 }), { x: 1 }, 'canvas and type are not editable');
+    assert.deepEqual(parseElementUpdate({ photo: { x: 1, y: 2, width: 3, height: 4, rotation: 5, junk: 6 } }), {
+      photo: { x: 1, y: 2, width: 3, height: 4, rotation: 5 },
+    });
+    for (const bad of [null, 'x', {}, { junk: 1 }, { x: NaN }, { width: 0 }, { shape: 'blob' }, { url: 'ftp://x.y' }, { x: 1, y: 'a' }])
+      assert.equal(parseElementUpdate(bad), null, `should reject ${JSON.stringify(bad)}`);
+  });
+});
+
+describe('element service', () => {
+  const ok = async (canvasId: string, over: object = {}) => {
+    const res = await addElement(parseElement(shape(canvasId, over))!);
+    assert.equal(res.ok, true);
+    return res.ok ? res.id : '';
+  };
+
+  // Stored, then announced with the sender (so it is not echoed back); wire shape has id and no _id.
+  it('adds an element and announces it with its sender', async () => {
+    const { canvasId } = await createCanvasWithOwner({ isShared: true });
+    const events = record('elementAdded');
+    const res = await addElement(parseElement(shape(canvasId))!, 'socket-1');
+    assert.equal(res.ok, true);
+    assert.equal((await listElements(canvasId)).length, 1);
+
+    const [[message, sender]] = events.seen as [[Record<string, unknown>, string]];
+    assert.equal(message.id, res.ok && res.id);
+    assert.equal(message.canvasId, canvasId);
+    assert.equal(sender, 'socket-1');
+    assert.equal('_id' in message, false);
+    assert.ok(message.createdAt instanceof Date && message.updatedAt instanceof Date);
+    events.stop();
+  });
+
+  it('refuses a canvas that does not exist or an invalid id, and stores nothing', async () => {
+    const events = record('elementAdded');
+    assert.deepEqual(await addElement(parseElement(shape(UNKNOWN_ID))!), { ok: false, status: 404, error: 'Canvas not found' });
+    assert.deepEqual(await addElement(parseElement(shape('nope'))!), { ok: false, status: 400, error: 'Invalid canvas id' });
+    assert.equal((await listElements(UNKNOWN_ID)).length, 0);
+    assert.deepEqual(events.seen, []);
+    events.stop();
+  });
+
+  // Oldest first, scoped to the canvas.
+  it('lists a canvas\'s elements oldest first and only its own', async () => {
+    const a = await createCanvasWithOwner({ isShared: true });
+    const b = await createCanvasWithOwner({ isShared: true });
+    const first = await ok(a.canvasId);
+    const second = await ok(a.canvasId, { type: 'shape', shape: 'star' });
+    await ok(b.canvasId);
+    assert.deepEqual((await listElementMessages(a.canvasId)).map((e) => e.id), [first, second]);
+  });
+
+  // Partial change, server sets updatedAt, last write wins, the new state is announced.
+  it('updates only the given fields, bumps updatedAt and announces the new state', async () => {
+    const { canvasId } = await createCanvasWithOwner({ isShared: true });
+    const id = await ok(canvasId);
+    const before = (await listElementMessages(canvasId))[0]!;
+    const events = record('elementUpdated');
+    await new Promise((r) => setTimeout(r, 5));
+
+    assert.deepEqual(await updateElement(canvasId, id, { x: 99, color: null }, 'socket-1'), { ok: true });
+    assert.deepEqual(await updateElement(canvasId, id, { x: 100 }, 'socket-2'), { ok: true }); // last write wins
+    const after = (await listElementMessages(canvasId))[0]!;
+    assert.equal(after.x, 100);
+    assert.equal(after.color, null);
+    assert.equal(after.width, before.width, 'untouched fields stay');
+    assert.ok(after.updatedAt > before.updatedAt);
+    assert.deepEqual(after.createdAt, before.createdAt);
+
+    const [[first, sender1], [second, sender2]] = events.seen as [[{ id: string; x: number }, string], [{ x: number }, string]];
+    assert.deepEqual([first.id, first.x, sender1, second.x, sender2], [id, 99, 'socket-1', 100, 'socket-2']);
+    events.stop();
+  });
+
+  it('reports unknown elements (404), other canvases\' elements (404) and invalid ids (400)', async () => {
+    const mine = await createCanvasWithOwner({ isShared: true });
+    const other = await createCanvasWithOwner({ isShared: true });
+    const theirs = await ok(other.canvasId);
+    const events = record('elementUpdated');
+    const status = (r: { ok: boolean }) => (r.ok ? 200 : (r as unknown as { status: number }).status);
+
+    assert.equal(status(await updateElement(mine.canvasId, UNKNOWN_ID, { x: 1 })), 404);
+    assert.equal(status(await updateElement(mine.canvasId, theirs, { x: 1 })), 404);
+    assert.equal(status(await updateElement(UNKNOWN_ID, theirs, { x: 1 })), 404);
+    assert.equal(status(await updateElement(mine.canvasId, 'nope', { x: 1 })), 400);
+    assert.equal(status(await updateElement('nope', theirs, { x: 1 })), 400);
+    assert.equal((await listElementMessages(other.canvasId))[0]!.x, 10, 'nothing changed');
+    assert.deepEqual(events.seen, []);
+    events.stop();
+  });
+
+  it('deletes one element, announces it, and reports unknown or foreign ones', async () => {
+    const mine = await createCanvasWithOwner({ isShared: true });
+    const other = await createCanvasWithOwner({ isShared: true });
+    const keep = await ok(mine.canvasId);
+    const doomed = await ok(mine.canvasId);
+    const theirs = await ok(other.canvasId);
+    const events = record('elementDeleted');
+
+    assert.deepEqual(await deleteElement(mine.canvasId, doomed, 'socket-1'), { ok: true });
+    assert.deepEqual((await listElementMessages(mine.canvasId)).map((e) => e.id), [keep]);
+    assert.deepEqual(events.seen, [[mine.canvasId, doomed, 'socket-1']]);
+
+    assert.equal((await deleteElement(mine.canvasId, doomed) as { status: number }).status, 404, 'already gone');
+    assert.equal((await deleteElement(mine.canvasId, theirs) as { status: number }).status, 404);
+    assert.equal((await deleteElement(mine.canvasId, 'nope') as { status: number }).status, 400);
+    assert.equal((await listElementMessages(other.canvasId)).length, 1);
+    assert.equal(events.seen.length, 1);
+    events.stop();
+  });
+
+  // The access rule lives in getAccessibleCanvas (shared = anyone, private = owner); routes and
+  // sockets both call it before any element operation.
+  it('relies on the same access rules as strokes: private canvases need the owner token', async () => {
+    const { canvasId, ownerToken } = await createCanvasWithOwner({ isShared: false });
+    assert.equal((await getAccessibleCanvas(canvasId)).ok, false);
+    assert.equal((await getAccessibleCanvas(canvasId, 'wrong')).ok, false);
+    assert.equal((await getAccessibleCanvas(canvasId, ownerToken)).ok, true);
+  });
+});
+
+describe('deleteCanvasWithStrokes and elements', () => {
+  // Deleting a canvas also removes its elements, and only its own.
+  it('removes the canvas\'s elements but not other canvases\' elements', async () => {
+    const doomed = await createCanvasWithOwner({ isShared: true });
+    const kept = await createCanvasWithOwner({ isShared: true });
+    await insertElement(parseElement(shape(doomed.canvasId))!);
+    await insertElement(parseElement(cutout(doomed.canvasId))!);
+    await insertElement(parseElement(shape(kept.canvasId))!);
+
+    assert.deepEqual(await deleteCanvasWithStrokes(doomed.canvasId, doomed.ownerToken), { ok: true });
+    assert.equal((await listElements(doomed.canvasId)).length, 0);
+    assert.equal((await listElements(kept.canvasId)).length, 1);
+  });
+
+  it('keeps the elements when a non-owner tries to delete the canvas', async () => {
+    const { canvasId } = await createCanvasWithOwner({ isShared: true });
+    await insertElement(parseElement(shape(canvasId))!);
+    assert.equal((await deleteCanvasWithStrokes(canvasId, 'wrong')).ok, false);
+    assert.equal((await listElements(canvasId)).length, 1);
   });
 });

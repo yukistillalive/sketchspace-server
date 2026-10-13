@@ -1,0 +1,11 @@
+$kind: http-request
+method: DELETE
+url: '{{baseUrl}}/api/canvas/{{canvasId}}/elements/{{elementId}}'
+order: 7961
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('403 for a private canvas without the token', () => {
+        pm.response.to.have.status(403);
+      });

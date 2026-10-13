@@ -1,0 +1,20 @@
+$kind: http-request
+method: PUT
+url: '{{baseUrl}}/api/canvas/{{canvasId}}/elements/{{elementId}}'
+order: 7958
+headers:
+  - key: Content-Type
+    value: 'application/json'
+  - key: X-Owner-Token
+    value: '{{ownerToken}}'
+body:
+  type: json
+  content: |-
+    {"width":-5}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('400 for a negative width', () => {
+        pm.response.to.have.status(400);
+      });

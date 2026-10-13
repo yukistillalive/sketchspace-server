@@ -1,0 +1,18 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/canvas/{{canvasId}}/elements'
+order: 7951
+headers:
+  - key: Content-Type
+    value: 'application/json'
+body:
+  type: json
+  content: |-
+    {"type":"shape","x":10,"y":20,"width":100,"height":50,"rotation":0,"zIndex":1,"shape":"circle","color":null}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('403 for a private canvas without the token', () => {
+        pm.response.to.have.status(403);
+      });

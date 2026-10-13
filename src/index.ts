@@ -4,6 +4,7 @@ import express from 'express';
 import { Server } from 'socket.io';
 import { connectDB } from './db.js';
 import { canvasRouter } from './routes/canvas.routes.js';
+import { elementRouter } from './routes/element.routes.js';
 import { strokeRouter } from './routes/stroke.routes.js';
 import { registerCanvasSocket } from './socket/canvas.socket.js';
 
@@ -21,6 +22,7 @@ app.get('/health', (_req, res) => {
 });
 app.use('/api/canvas', canvasRouter);
 app.use('/api/canvas', strokeRouter);
+app.use('/api/canvas', elementRouter);
 
 await connectDB(); // repositories need the db before any request or socket event
 

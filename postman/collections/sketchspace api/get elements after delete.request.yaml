@@ -1,0 +1,17 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/canvas/{{canvasId}}/elements'
+order: 7965
+headers:
+  - key: X-Owner-Token
+    value: '{{ownerToken}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('200 and only the cutout is left', () => {
+        pm.response.to.have.status(200);
+        const elements = pm.response.json();
+        pm.expect(elements).to.have.length(1);
+        pm.expect(elements[0].type).to.eql('cutout');
+      });

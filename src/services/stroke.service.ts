@@ -4,6 +4,7 @@ import { findCanvas, isValidCanvasId } from '../repositories/canvas.repository.j
 import {
   addStroke,
   deleteLastStrokeByAuthor,
+  deleteStroke,
   listStrokes,
   type NewStroke,
   type Stroke,
@@ -60,4 +61,21 @@ export async function undoLastStroke(canvasId: string, sender: Sender): Promise<
   const id = removed._id.toString();
   canvasEvents.emit('strokeRemoved', canvasId, id, sender.socketId);
   return { ok: true, id };
+}
+
+export type DeleteStrokeResult = { ok: true } | { ok: false; status: 400 | 404; error: string };
+
+/** Removes one stroke by id and tells the others (except the socket that asked, if any). */
+export async function deleteStrokeById(
+  canvasId: string,
+  strokeId: string,
+  senderSocketId?: string,
+): Promise<DeleteStrokeResult> {
+  if (!isValidCanvasId(canvasId)) return { ok: false, status: 400, error: 'Invalid canvas id' };
+  if (!isValidCanvasId(strokeId)) return { ok: false, status: 400, error: 'Invalid stroke id' }; // same id format
+  if (!(await findCanvas(canvasId))) return { ok: false, status: 404, error: 'Canvas not found' };
+  if (!(await deleteStroke(canvasId, strokeId))) return { ok: false, status: 404, error: 'Stroke not found' };
+
+  canvasEvents.emit('strokeDeleted', canvasId, strokeId, senderSocketId);
+  return { ok: true };
 }
