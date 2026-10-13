@@ -15,6 +15,8 @@ export interface Stroke {
   color: string;
   opacity: number;
   createdAt: Date;
+  /** Who drew it: 'owner' or a socket id. Server-side only, never sent to clients. Absent for REST strokes. */
+  authorId?: string;
 }
 
 export type StrokeDoc = WithId<Stroke>;
@@ -36,4 +38,9 @@ export function listStrokes(canvasId: string): Promise<StrokeDoc[]> {
 export async function deleteStrokesByCanvas(canvasId: string): Promise<number> {
   const result = await strokes().deleteMany({ canvasId });
   return result.deletedCount;
+}
+
+/** Removes and returns the most recent stroke drawn by `authorId` in a canvas, or null if none. */
+export function deleteLastStrokeByAuthor(canvasId: string, authorId: string): Promise<StrokeDoc | null> {
+  return strokes().findOneAndDelete({ canvasId, authorId }, { sort: { createdAt: -1, _id: -1 } });
 }

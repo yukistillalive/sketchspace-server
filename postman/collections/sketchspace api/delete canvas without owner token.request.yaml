@@ -1,0 +1,11 @@
+$kind: http-request
+method: DELETE
+url: '{{baseUrl}}/api/canvas/{{canvasId}}'
+order: 10500
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('403: only the owner can delete', () => {
+        pm.response.to.have.status(403);
+      });

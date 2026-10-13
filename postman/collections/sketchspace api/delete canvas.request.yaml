@@ -2,6 +2,9 @@ $kind: http-request
 method: DELETE
 url: '{{baseUrl}}/api/canvas/{{canvasId}}'
 order: 11000
+headers:
+  - key: X-Owner-Token
+    value: '{{ownerToken}}'
 scripts:
   - type: afterResponse
     language: text/javascript

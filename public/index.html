@@ -10,15 +10,20 @@
     #canvasId { width: 260px; }
     canvas { border: 1px solid #888; touch-action: none; cursor: crosshair; max-width: 100%; }
     #status { color: #555; }
+    #mode { font-weight: 600; padding: 2px 8px; border-radius: 10px; background: #eee; }
   </style>
 </head>
 <body>
   <div id="bar">
-    <button id="create">New shared canvas</button>
+    <button id="create">New canvas</button>
+    <label><input id="shared" type="checkbox"> shared</label>
+    <span id="mode"></span>
     <input id="canvasId" placeholder="canvas id">
     <button id="join">Join</button>
     <input id="color" type="color" value="#222222">
     <input id="size" type="range" min="1" max="40" value="4">
+    <button id="undo" disabled>Undo</button>
+    <button id="clear" disabled>Clear</button>
     <span id="status">not connected</span>
   </div>
   <canvas id="board" width="900" height="600"></canvas>
@@ -32,6 +37,27 @@
     const setStatus = (t) => { $('status').textContent = t; };
 
     let canvasId = null;
+    let isShared = false;
+    let isOwner = false;
+    let peers = 0;
+    let strokes = []; // what is on the board; redrawn after an undo or a clear
+
+    // The owner token is returned once when a canvas is created; it lets the owner back into
+    // the canvas while it is private (solo mode). Kept in localStorage per canvas.
+    const tokenKey = (id) => `owner:${id}`;
+    const getToken = (id) => { try { return localStorage.getItem(tokenKey(id)); } catch { return null; } };
+    const saveToken = (id, t) => { try { localStorage.setItem(tokenKey(id), t); } catch {} };
+
+    // solo = private and just you; collaboration = shared with someone else in it
+    function showMode() {
+      $('shared').checked = isShared;
+      $('shared').disabled = !canvasId || !isOwner; // only the owner can share / unshare
+      $('undo').disabled = !canvasId;
+      $('clear').disabled = !canvasId || !isOwner; // only the owner can clear
+      $('mode').textContent = !canvasId ? '' :
+        !isShared ? 'solo mode' :
+        peers > 1 ? `collaboration mode (${peers} here)` : 'shared, waiting for others';
+    }
 
     function drawStroke(s) {
       ctx.save();
@@ -47,15 +73,24 @@
       ctx.restore();
     }
 
+    function redraw() {
+      ctx.clearRect(0, 0, board.width, board.height);
+      strokes.forEach(drawStroke);
+    }
+
     function join(id) {
-      socket.emit('canvas:join', id, (res) => {
+      const token = getToken(id);
+      socket.emit('canvas:join', id, token ? { ownerToken: token } : {}, (res) => {
         if (!res.ok) return setStatus(res.error);
         canvasId = id;
+        isShared = res.isShared;
+        isOwner = res.isOwner;
         $('canvasId').value = id;
         history.replaceState(null, '', `?canvas=${id}`);
-        ctx.clearRect(0, 0, board.width, board.height);
-        res.strokes.forEach(drawStroke);
-        setStatus(`joined ${id}`);
+        strokes = res.strokes;
+        redraw();
+        setStatus(`joined ${id}${isOwner ? ' (owner)' : ''}`);
+        showMode();
       });
     }
 
@@ -63,15 +98,66 @@
       const r = await fetch('/api/canvas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'demo', isShared: true }),
+        body: JSON.stringify({ name: 'demo', isShared: $('shared').checked }),
       });
-      join((await r.json()).canvasId);
+      const { canvasId: id, ownerToken } = await r.json();
+      saveToken(id, ownerToken);
+      join(id);
     };
     $('join').onclick = () => join($('canvasId').value.trim());
 
     // another participant finished a stroke
-    socket.on('stroke:added', drawStroke);
-    socket.on('canvas:peers', (n) => setStatus(`joined ${canvasId} (${n} here)`));
+    socket.on('stroke:added', (s) => { strokes.push(s); drawStroke(s); });
+    // a participant undid a stroke, or the owner cleared the canvas
+    socket.on('stroke:removed', (id) => { strokes = strokes.filter((s) => s.id !== id); redraw(); });
+    socket.on('canvas:cleared', () => { strokes = []; redraw(); });
+    socket.on('canvas:peers', (n) => { peers = n; showMode(); });
+    // the owner made the canvas private: we were removed from it
+    socket.on('canvas:unshared', () => {
+      canvasId = null;
+      setStatus('the owner made this canvas private');
+      showMode();
+    });
+
+    // the canvas was deleted: we were removed from it
+    socket.on('canvas:deleted', () => {
+      canvasId = null;
+      setStatus('this canvas was deleted');
+      showMode();
+    });
+
+    // owner toggles shared / private (solo <-> collaboration)
+    $('shared').onchange = async () => {
+      const want = $('shared').checked;
+      const r = await fetch(`/api/canvas/${canvasId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-Owner-Token': getToken(canvasId) || '' },
+        body: JSON.stringify({ isShared: want }),
+      });
+      if (r.ok) isShared = want;
+      showMode();
+    };
+    // undo your latest stroke (button or Ctrl/Cmd+Z); the owner can clear everything
+    function undo() {
+      if (!canvasId) return;
+      socket.emit('stroke:undo', (res) => {
+        if (!res.ok) return setStatus(res.error);
+        strokes = strokes.filter((s) => s.id !== res.id);
+        redraw();
+      });
+    }
+    $('undo').onclick = undo;
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
+    });
+    $('clear').onclick = () => {
+      socket.emit('canvas:clear', (res) => {
+        if (!res.ok) return setStatus(res.error);
+        strokes = [];
+        redraw();
+      });
+    };
+
     // reconnect (e.g. server restart): rejoin to get missed strokes
     socket.on('connect', () => canvasId && join(canvasId));
 
@@ -98,7 +184,13 @@
       const stroke = current;
       current = null;
       drawStroke(stroke);
-      socket.emit('stroke:add', stroke, (res) => { if (!res.ok) setStatus(res.error); });
+      strokes.push(stroke);
+      socket.emit('stroke:add', stroke, (res) => {
+        if (res.ok) return void (stroke.id = res.id); // the id is what undo and other clients refer to
+        strokes = strokes.filter((s) => s !== stroke);
+        redraw();
+        setStatus(res.error);
+      });
     };
     board.addEventListener('pointerup', finish);
     board.addEventListener('pointercancel', finish);

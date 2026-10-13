@@ -3,6 +3,8 @@ method: PUT
 url: '{{baseUrl}}/api/canvas/{{canvasId}}'
 order: 6000
 headers:
+  - key: X-Owner-Token
+    value: '{{ownerToken}}'
   - key: Content-Type
     value: application/json
 body:

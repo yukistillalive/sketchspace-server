@@ -10,4 +10,5 @@ scripts:
         pm.response.to.have.status(200);
         const ids = pm.response.json().map((c) => c._id);
         pm.expect(ids).to.include(pm.collectionVariables.get('canvasId'));
+      pm.expect(JSON.stringify(pm.response.json())).to.not.include('ownerToken');
       });

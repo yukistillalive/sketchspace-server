@@ -1,0 +1,18 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/canvas/{{canvasId}}/strokes'
+order: 7700
+headers:
+  - key: Content-Type
+    value: 'application/json'
+body:
+  type: json
+  content: |-
+    {"layerId":"foreground","brush":"pen","size":4,"color":"#222222","opacity":1,"path":[{"x":1,"y":2}]}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('403 for a private canvas without the token', () => {
+        pm.response.to.have.status(403);
+      });
