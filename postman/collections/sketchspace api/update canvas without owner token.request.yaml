@@ -1,0 +1,19 @@
+$kind: http-request
+method: PUT
+url: '{{baseUrl}}/api/canvas/{{canvasId}}'
+order: 5500
+headers:
+  - key: Content-Type
+    value: 'application/json'
+body:
+  type: json
+  content: |-
+    {"name":"hacked"}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('403: only the owner can change a canvas', () => {
+        pm.response.to.have.status(403);
+        pm.expect(pm.response.json()).to.have.property('error');
+      });

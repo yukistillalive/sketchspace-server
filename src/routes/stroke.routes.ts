@@ -1,33 +1,29 @@
 import { Router } from 'express';
-import { isValidCanvasId, findCanvas } from '../repositories/canvas.repository.js';
-import { addStroke, listStrokes } from '../repositories/stroke.repository.js';
+import { getAccessibleCanvas } from '../services/canvas.service.js';
+import { listStrokeMessages, saveStroke } from '../services/stroke.service.js';
 import { parseStroke } from '../validation/stroke.validation.js';
+import { ownerTokenOf } from './canvas.routes.js';
 
 export const strokeRouter = Router();
 
-// POST /api/canvas/:id/strokes
+// POST /api/canvas/:id/strokes (a private canvas needs the owner token)
 strokeRouter.post('/:id/strokes', async (req, res) => {
-  if (!isValidCanvasId(req.params.id))
-    return res.status(400).json({ error: 'Invalid canvas id' });
+  const access = await getAccessibleCanvas(req.params.id, ownerTokenOf(req));
+  if (!access.ok) return res.status(access.status).json({ error: access.error });
 
   const body = typeof req.body === 'object' && req.body !== null ? req.body : {};
   const stroke = parseStroke({ ...body, canvasId: req.params.id }); // id comes from the URL
   if (!stroke) return res.status(400).json({ error: 'Invalid stroke fields' });
 
-  const canvas = await findCanvas(req.params.id);
-  if (!canvas) return res.status(404).json({ error: 'Canvas not found' });
-
-  const strokeId = await addStroke(stroke);
-  res.status(201).json({ strokeId });
+  const saved = await saveStroke(stroke); // also pushes it to people connected to the canvas
+  if (!saved.ok) return res.status(404).json({ error: saved.error });
+  res.status(201).json({ strokeId: saved.id });
 });
 
-// GET /api/canvas/:id/strokes
+// GET /api/canvas/:id/strokes (a private canvas needs the owner token)
 strokeRouter.get('/:id/strokes', async (req, res) => {
-  if (!isValidCanvasId(req.params.id))
-    return res.status(400).json({ error: 'Invalid canvas id' });
+  const access = await getAccessibleCanvas(req.params.id, ownerTokenOf(req));
+  if (!access.ok) return res.status(access.status).json({ error: access.error });
 
-  const canvas = await findCanvas(req.params.id);
-  if (!canvas) return res.status(404).json({ error: 'Canvas not found' });
-
-  res.json(await listStrokes(req.params.id));
+  res.json(await listStrokeMessages(req.params.id));
 });

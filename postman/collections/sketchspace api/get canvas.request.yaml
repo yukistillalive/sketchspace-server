@@ -12,4 +12,5 @@ scripts:
         pm.expect(c).to.include.all.keys('_id', 'name', 'isShared', 'createdAt', 'updatedAt');
         pm.expect(c.name).to.eql('postman test');
         pm.expect(c.isShared).to.eql(true);
+      pm.expect(c).to.not.have.any.keys('ownerToken', 'ownerTokenHash');
       });

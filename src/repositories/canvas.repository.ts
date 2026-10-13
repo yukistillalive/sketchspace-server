@@ -14,6 +14,8 @@ export interface Canvas {
   createdAt: Date;
   updatedAt: Date;
   layers: Layer[];
+  /** SHA-256 of the owner token. Absent on canvases created before owners existed. Never sent to clients. */
+  ownerTokenHash?: string;
 }
 
 //the layer at the forefront starts with 0, layers behind it will be numbered > 0. (order 1 is behind order 0)
@@ -22,6 +24,12 @@ const defaultLayers: Layer[] = [{id: "foreground", order: 0, visible: true},
 ]
 
 export type CanvasDoc = WithId<Canvas>;
+/** A canvas as sent to clients: everything except the owner token hash. */
+export type PublicCanvas = Omit<CanvasDoc, 'ownerTokenHash'>;
+
+export function toPublicCanvas({ ownerTokenHash: _hidden, ...rest }: CanvasDoc): PublicCanvas {
+  return rest;
+}
 
 export interface NewCanvas {
   name?: string;
@@ -34,7 +42,10 @@ const canvas = (): Collection<Canvas> => getDb().collection<Canvas>('canvas');
 
 export const isValidCanvasId = (id: string): boolean => /^[0-9a-f]{24}$/i.test(id);
 
-export async function createCanvas({ name, isShared }: NewCanvas): Promise<string> {
+export async function createCanvas(
+  { name, isShared }: NewCanvas,
+  ownerTokenHash?: string,
+): Promise<string> {
   const now = new Date();
   const result = await canvas().insertOne({
     name: name ?? 'untitled',
@@ -42,12 +53,17 @@ export async function createCanvas({ name, isShared }: NewCanvas): Promise<strin
     createdAt: now,
     updatedAt: now,
     layers: defaultLayers,
+    ...(ownerTokenHash && { ownerTokenHash }),
   });
   return result.insertedId.toString();
 }
 
 export function listCanvas(): Promise<CanvasDoc[]> {
   return canvas().find().toArray();
+}
+
+export function listSharedCanvas(): Promise<CanvasDoc[]> {
+  return canvas().find({ isShared: true }).toArray();
 }
 
 export function findCanvas(id: string): Promise<CanvasDoc | null> {

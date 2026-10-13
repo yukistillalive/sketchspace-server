@@ -13,9 +13,12 @@ scripts:
   - type: afterResponse
     language: text/javascript
     code: |-
-      pm.test('201 and returns canvasId', () => {
+      pm.test('201 and returns canvasId and a one-time ownerToken', () => {
         pm.response.to.have.status(201);
         const id = pm.response.json().canvasId;
         pm.expect(id).to.be.a('string').and.have.length.above(0);
         pm.collectionVariables.set('canvasId', id);
+      const token = pm.response.json().ownerToken;
+      pm.expect(token).to.match(/^[0-9a-f]{64}$/);
+      pm.collectionVariables.set('ownerToken', token);
       });

@@ -1,0 +1,13 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/canvas'
+order: 7550
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('200 and the private canvas is not in the list', () => {
+        pm.response.to.have.status(200);
+        const ids = pm.response.json().map((c) => c._id);
+        pm.expect(ids).to.not.include(pm.collectionVariables.get('canvasId'));
+      });
