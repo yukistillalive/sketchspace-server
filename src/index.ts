@@ -17,7 +17,7 @@ import { ensureFolderIndexes } from './repositories/folder.repository.js';
 
 const app = express();
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: '300kb' })); // default 100kb is too small for avatars sent as data URLs (up to 200KB)
 app.use(cookieParser());
 app.use(express.static(new URL('../public', import.meta.url).pathname)); // demo client
 app.get('/health', (_req, res) => {
@@ -34,6 +34,8 @@ app.use('/api/users', userRouter);
 app.use('/api/folders', folderRouter);
 
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+  if (err?.type === 'entity.too.large') // body over the express.json limit, e.g. a huge avatar
+    return res.status(400).json({ error: 'Request body is too large (max 300KB; avatar data URLs max 200KB)' });
   console.error(err);
   res.status(500).json({ error: 'Internal server error' });
 };
