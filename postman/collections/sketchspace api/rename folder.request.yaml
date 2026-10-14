@@ -1,0 +1,23 @@
+$kind: http-request
+method: PUT
+url: '{{baseUrl}}/api/folders/{{folderId}}'
+order: 26400
+headers:
+  - key: Authorization
+    value: 'Bearer {{token}}'
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {"name":"Renamed folder"}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('200 and returns the renamed folder', () => {
+        pm.response.to.have.status(200);
+        const body = pm.response.json();
+        pm.expect(body.id).to.eql(pm.collectionVariables.get('folderId'));
+        pm.expect(body.name).to.eql('Renamed folder');
+      });

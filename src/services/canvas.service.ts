@@ -9,11 +9,13 @@ import {
   listCanvasByOwner,
   listSharedCanvas,
   setCanvasOwnerUser,
+  toOwnedCanvas,
   toPublicCanvas,
   updateCanvas,
   type CanvasDoc,
   type CanvasUpdate,
   type NewCanvas,
+  type OwnedCanvas,
   type PublicCanvas,
 } from '../repositories/canvas.repository.js';
 import { deleteElementsByCanvas } from '../repositories/element.repository.js';
@@ -147,9 +149,9 @@ export async function clearCanvasStrokes(
   return { ok: true, removed };
 }
 
-/** The canvases an account owns, shared and private. */
-export async function listCanvasesOf(userId: string): Promise<PublicCanvas[]> {
-  return (await listCanvasByOwner(userId)).map(toPublicCanvas);
+/** The canvases an account owns, shared and private, each with its `folderId` (null = in no folder). */
+export async function listCanvasesOf(userId: string): Promise<OwnedCanvas[]> {
+  return (await listCanvasByOwner(userId)).map(toOwnedCanvas);
 }
 
 /**

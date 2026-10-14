@@ -1,0 +1,15 @@
+$kind: http-request
+method: DELETE
+url: '{{baseUrl}}/api/folders/{{folderId}}'
+order: 26800
+headers:
+  - key: Authorization
+    value: 'Bearer {{token2}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("403 for another account's folder", () => {
+        pm.response.to.have.status(403);
+        pm.expect(pm.response.json().error).to.match(/not your folder/i);
+      });

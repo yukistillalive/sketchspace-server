@@ -1,0 +1,16 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/canvas/mine'
+order: 26600
+headers:
+  - key: Authorization
+    value: 'Bearer {{token}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('200 and the canvas carries its folderId', () => {
+        pm.response.to.have.status(200);
+        const canvas = pm.response.json().find((c) => c._id === pm.collectionVariables.get('folderCanvasId'));
+        pm.expect(canvas.folderId).to.eql(pm.collectionVariables.get('folderId'));
+      });

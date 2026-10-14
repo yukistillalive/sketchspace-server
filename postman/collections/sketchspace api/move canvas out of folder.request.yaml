@@ -1,0 +1,21 @@
+$kind: http-request
+method: PUT
+url: '{{baseUrl}}/api/canvas/{{folderCanvasId}}/folder'
+order: 26940
+headers:
+  - key: Authorization
+    value: 'Bearer {{token}}'
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {"folderId":null}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('200 and ok for null (no folder)', () => {
+        pm.response.to.have.status(200);
+        pm.expect(pm.response.json()).to.eql({ ok: true });
+      });

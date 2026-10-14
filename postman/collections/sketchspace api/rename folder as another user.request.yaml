@@ -1,0 +1,21 @@
+$kind: http-request
+method: PUT
+url: '{{baseUrl}}/api/folders/{{folderId}}'
+order: 26750
+headers:
+  - key: Authorization
+    value: 'Bearer {{token2}}'
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {"name":"Stolen"}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("403 for another account's folder", () => {
+        pm.response.to.have.status(403);
+        pm.expect(pm.response.json().error).to.match(/not your folder/i);
+      });
