@@ -16,6 +16,8 @@ export interface Canvas {
   layers: Layer[];
   /** SHA-256 of the owner token. Absent on canvases created before owners existed. Never sent to clients. */
   ownerTokenHash?: string;
+  /** The account that created the canvas while logged in. Never sent to clients. */
+  ownerUserId?: string;
 }
 
 //the layer at the forefront starts with 0, layers behind it will be numbered > 0. (order 1 is behind order 0)
@@ -24,10 +26,10 @@ const defaultLayers: Layer[] = [{id: "foreground", order: 0, visible: true},
 ]
 
 export type CanvasDoc = WithId<Canvas>;
-/** A canvas as sent to clients: everything except the owner token hash. */
-export type PublicCanvas = Omit<CanvasDoc, 'ownerTokenHash'>;
+/** A canvas as sent to clients: everything except the owner token hash and the owner account. */
+export type PublicCanvas = Omit<CanvasDoc, 'ownerTokenHash' | 'ownerUserId'>;
 
-export function toPublicCanvas({ ownerTokenHash: _hidden, ...rest }: CanvasDoc): PublicCanvas {
+export function toPublicCanvas({ ownerTokenHash: _hash, ownerUserId: _user, ...rest }: CanvasDoc): PublicCanvas {
   return rest;
 }
 
@@ -45,6 +47,7 @@ export const isValidCanvasId = (id: string): boolean => /^[0-9a-f]{24}$/i.test(i
 export async function createCanvas(
   { name, isShared }: NewCanvas,
   ownerTokenHash?: string,
+  ownerUserId?: string,
 ): Promise<string> {
   const now = new Date();
   const result = await canvas().insertOne({
@@ -54,6 +57,7 @@ export async function createCanvas(
     updatedAt: now,
     layers: defaultLayers,
     ...(ownerTokenHash && { ownerTokenHash }),
+    ...(ownerUserId && { ownerUserId }),
   });
   return result.insertedId.toString();
 }
@@ -64,6 +68,17 @@ export function listCanvas(): Promise<CanvasDoc[]> {
 
 export function listSharedCanvas(): Promise<CanvasDoc[]> {
   return canvas().find({ isShared: true }).toArray();
+}
+
+/** The canvases an account owns (shared and private), most recently changed first. */
+export function listCanvasByOwner(userId: string): Promise<CanvasDoc[]> {
+  return canvas().find({ ownerUserId: userId }).sort({ updatedAt: -1 }).toArray();
+}
+
+/** Attaches a canvas to an account. Returns false if no canvas matched. */
+export async function setCanvasOwnerUser(id: string, userId: string): Promise<boolean> {
+  const result = await canvas().updateOne({ _id: new ObjectId(id) }, { $set: { ownerUserId: userId } });
+  return result.matchedCount > 0;
 }
 
 export function findCanvas(id: string): Promise<CanvasDoc | null> {

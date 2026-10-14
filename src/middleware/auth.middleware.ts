@@ -15,6 +15,22 @@ function extractToken(req: Request): string | null {
 }
 
 /**
+ * The id of the logged-in user, or null for a guest. Never refuses the request: routes that work
+ * for guests too (like creating a canvas) use this instead of requireAuth.
+ */
+export function optionalUserId(req: Request): string | null {
+  const token = extractToken(req);
+  return token ? verifyToken(token) : null;
+}
+
+/** Same for a socket: reads the login cookie sent with the connection. */
+export function userIdFromCookieHeader(cookieHeader: string | undefined): string | null {
+  const pair = cookieHeader?.split(';').map((c) => c.trim()).find((c) => c.startsWith(`${TOKEN_COOKIE}=`));
+  const value = pair ? decodeURIComponent(pair.slice(TOKEN_COOKIE.length + 1)) : '';
+  return value ? verifyToken(value) : null;
+}
+
+/**
  * Protects a route: the token is VERIFIED (signature + expiry), not just read.
  * On success the user id is available through authUserId(res).
  */

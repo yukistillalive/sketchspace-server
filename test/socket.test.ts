@@ -9,6 +9,7 @@ const testUri = process.env.TEST_MONGODB_URI ?? 'mongodb://localhost:27017/sketc
 if (!/-test(\?|$)/.test(testUri))
   throw new Error(`Refusing to run: test database name must end in "-test" (got ${testUri})`);
 process.env.MONGODB_URI = testUri; // db.ts reads this when first imported
+process.env.JWT_SECRET ??= 'test-secret'; // the socket reads the login cookie, so it loads the auth code
 
 // Imported after the env var is set (static imports would run first).
 const { connectDB, closeDB, getDb } = await import('../src/db.js');
