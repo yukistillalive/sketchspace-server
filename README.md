@@ -194,29 +194,7 @@ Updates take any non-empty subset of these fields except `id`, `canvasId` and `t
 - Deleting a canvas removes its strokes, elements and participants.
 - Canvases created before owner tokens have no owner: anyone can modify them, and they cannot be joined while private.
 
-## Getting started
-
-Requires Node.js 20.6+ and Docker (for MongoDB).
-
-```bash
-npm install
-```
-
-Create `.env` (`CLIENT_ORIGIN` accepts a comma-separated list):
-
-```
-MONGODB_URI=mongodb://localhost:27017/sketch-space
-PORT=3000
-CLIENT_ORIGIN=http://localhost:5173
-```
-
-```bash
-docker run -d -p 27017:27017 --name mongo mongo   # first time
-docker start mongo                                # later
-npm run dev
-```
-
-Open `http://localhost:3000` for the demo client.
+## Scripts
 
 | Script | Description |
 |---|---|
@@ -228,6 +206,21 @@ Open `http://localhost:3000` for the demo client.
 | `npm run test:socket` | Socket tests only |
 | `npm run test:service` | Service tests only |
 | `npm run test:ownership` | Account ownership tests only |
+
+## Deployment with Docker
+
+Runs the backend together with its MongoDB. Requires Docker (with Compose) and Git; there is nothing else to install. The frontend is deployed separately.
+
+1. Clone this repo on the server.
+2. Copy `.env.example` to `.env` and set `CLIENT_ORIGIN` (the address of your frontend) and `JWT_SECRET`. The file explains every setting.
+3. Run `docker compose up -d --build`.
+4. Check that `http://<server>:3000/health` answers.
+
+To update, pull the repo and run step 3 again. Use `docker compose logs -f backend` for logs and `docker compose down` to stop; the database is kept in a Docker volume.
+
+- MongoDB is published only on the server's own `127.0.0.1:27018` (change with `MONGO_PORT`), so you can inspect it from that machine but not from outside. Do not expose it publicly: it has no password.
+- Serve the API over HTTPS in production (hosting platform or a reverse proxy). The login cookie is `Secure; SameSite=None`, so browsers drop it over plain HTTP, except on `localhost` in Chrome.
+- The frontend must send requests with credentials and its exact origin must match `CLIENT_ORIGIN`, otherwise the browser blocks the cookie.
 
 ## Project structure
 
