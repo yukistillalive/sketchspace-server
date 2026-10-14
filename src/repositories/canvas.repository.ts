@@ -18,6 +18,8 @@ export interface Canvas {
   ownerTokenHash?: string;
   /** The account that created the canvas while logged in. Never sent to clients. */
   ownerUserId?: string;
+  /** The owner's folder the canvas is in; absent = in no folder. Only sent to the owner. */
+  folderId?: string;
 }
 
 //the layer at the forefront starts with 0, layers behind it will be numbered > 0. (order 1 is behind order 0)
@@ -26,12 +28,25 @@ const defaultLayers: Layer[] = [{id: "foreground", order: 0, visible: true},
 ]
 
 export type CanvasDoc = WithId<Canvas>;
-/** A canvas as sent to clients: everything except the owner token hash and the owner account. */
-export type PublicCanvas = Omit<CanvasDoc, 'ownerTokenHash' | 'ownerUserId'>;
+/**
+ * A canvas as sent to clients: everything except the owner token hash, the owner account and the
+ * folder (folders are private to the owner).
+ */
+export type PublicCanvas = Omit<CanvasDoc, 'ownerTokenHash' | 'ownerUserId' | 'folderId'>;
 
-export function toPublicCanvas({ ownerTokenHash: _hash, ownerUserId: _user, ...rest }: CanvasDoc): PublicCanvas {
+export function toPublicCanvas({
+  ownerTokenHash: _hash,
+  ownerUserId: _user,
+  folderId: _folder,
+  ...rest
+}: CanvasDoc): PublicCanvas {
   return rest;
 }
+
+/** A canvas as sent to its owner: the public view plus its folder (null = in no folder). */
+export type OwnedCanvas = PublicCanvas & { folderId: string | null };
+
+export const toOwnedCanvas = (doc: CanvasDoc): OwnedCanvas => ({ ...toPublicCanvas(doc), folderId: doc.folderId ?? null });
 
 export interface NewCanvas {
   name?: string;
@@ -79,6 +94,21 @@ export function listCanvasByOwner(userId: string): Promise<CanvasDoc[]> {
 export async function setCanvasOwnerUser(id: string, userId: string): Promise<boolean> {
   const result = await canvas().updateOne({ _id: new ObjectId(id) }, { $set: { ownerUserId: userId } });
   return result.matchedCount > 0;
+}
+
+/** Puts a canvas in a folder, or in no folder (null). Returns false if no canvas matched. */
+export async function setCanvasFolder(id: string, folderId: string | null): Promise<boolean> {
+  const result = await canvas().updateOne(
+    { _id: new ObjectId(id) },
+    folderId === null ? { $unset: { folderId: '' } } : { $set: { folderId } },
+  );
+  return result.matchedCount > 0;
+}
+
+/** Takes every canvas out of a folder (the canvases stay). Returns how many were changed. */
+export async function removeFolderFromCanvases(folderId: string): Promise<number> {
+  const result = await canvas().updateMany({ folderId }, { $unset: { folderId: '' } });
+  return result.modifiedCount;
 }
 
 export function findCanvas(id: string): Promise<CanvasDoc | null> {

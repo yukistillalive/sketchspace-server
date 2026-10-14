@@ -1,0 +1,21 @@
+$kind: http-request
+method: PUT
+url: '{{baseUrl}}/api/canvas/{{folderCanvasId}}/folder'
+order: 26550
+headers:
+  - key: Authorization
+    value: 'Bearer {{token}}'
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {"folderId":"6abe45dcc09e70d0e46e4bbb"}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('404 for an unknown folder', () => {
+        pm.response.to.have.status(404);
+        pm.expect(pm.response.json().error).to.match(/folder not found/i);
+      });

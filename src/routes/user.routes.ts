@@ -3,6 +3,7 @@ import { authUserId, requireAuth } from '../middleware/auth.middleware.js';
 import { clearSessionCookie } from '../routes/auth.routes.js';
 import * as repo from '../repositories/user.repository.js';
 import { deleteCanvasesOfUser } from '../services/canvas.service.js';
+import { deleteFoldersOfUser } from '../services/folder.service.js';
 import { isValidAvatarUrl, isValidDisplayName } from '../validation/auth.validation.js';
 
 export const userRouter = Router();
@@ -37,10 +38,11 @@ userRouter.put('/me', async (req, res) => {
 });
 
 // DELETE /api/users/me
-// (also deletes the canvases the account owns, with their strokes and elements)
+// (also deletes the canvases the account owns, with their strokes and elements, and its folders)
 userRouter.delete('/me', async (_req, res) => {
   const found = await repo.deleteUser(authUserId(res));
   if (found) await deleteCanvasesOfUser(authUserId(res));
+  if (found) await deleteFoldersOfUser(authUserId(res));
   if (!found) return res.status(401).json({ error: 'Account no longer exists' });
   clearSessionCookie(res);
   res.json({ ok: true });

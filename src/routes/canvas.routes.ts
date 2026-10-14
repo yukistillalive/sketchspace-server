@@ -9,7 +9,9 @@ import {
   listPublicCanvases,
   updateCanvasAndNotify,
 } from '../services/canvas.service.js';
+import { moveCanvasToFolder } from '../services/folder.service.js';
 import { authUserId, optionalUserId, requireAuth } from '../middleware/auth.middleware.js';
+import { parseFolderMove } from '../validation/folder.validation.js';
 
 export const canvasRouter = Router();
 
@@ -58,6 +60,16 @@ canvasRouter.get('/:id', async (req, res) => {
 // claim: attach a canvas made with an owner token to the logged-in account (the token proves it is theirs)
 canvasRouter.post('/:id/claim', requireAuth, async (req, res) => {
   const result = await claimCanvas(String(req.params.id), ownerTokenOf(req), authUserId(res));
+  if (!result.ok) return res.status(result.status).json({ error: result.error });
+  res.json({ ok: true });
+});
+
+// move into one of the user's folders, or out of any folder with null (logged-in owner only)
+canvasRouter.put('/:id/folder', requireAuth, async (req, res) => {
+  const body = parseFolderMove(req.body);
+  if (!body) return res.status(400).json({ error: 'Provide folderId (folder id or null)' });
+
+  const result = await moveCanvasToFolder(req.params.id, body.folderId, authUserId(res));
   if (!result.ok) return res.status(result.status).json({ error: result.error });
   res.json({ ok: true });
 });

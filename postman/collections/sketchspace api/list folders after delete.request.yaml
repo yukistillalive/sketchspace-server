@@ -1,0 +1,16 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/folders'
+order: 26930
+headers:
+  - key: Authorization
+    value: 'Bearer {{token}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('200 and the folder is gone', () => {
+        pm.response.to.have.status(200);
+        const ids = pm.response.json().map((f) => f.id);
+        pm.expect(ids).to.not.include(pm.collectionVariables.get('folderId'));
+      });

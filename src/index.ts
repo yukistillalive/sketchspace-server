@@ -11,7 +11,9 @@ import { strokeRouter } from './routes/stroke.routes.js';
 import { registerCanvasSocket } from './socket/canvas.socket.js';
 import { authRouter } from './routes/auth.routes.js';
 import { userRouter } from './routes/user.routes.js';
+import { folderRouter } from './routes/folder.routes.js';
 import { ensureUserIndexes } from './repositories/user.repository.js';
+import { ensureFolderIndexes } from './repositories/folder.repository.js';
 
 const app = express();
 app.use(cors(corsOptions));
@@ -29,6 +31,7 @@ app.use('/api/canvas', strokeRouter);
 app.use('/api/canvas', elementRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/users', userRouter);
+app.use('/api/folders', folderRouter);
 
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   console.error(err);
@@ -38,6 +41,7 @@ app.use(errorHandler);
 
 await connectDB(); // repositories need the db before any request or socket event
 await ensureUserIndexes(); // unique email / googleId
+await ensureFolderIndexes(); // folder names unique per account, ignoring case
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: corsOptions });
