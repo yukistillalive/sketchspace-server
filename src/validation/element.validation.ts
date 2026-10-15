@@ -63,8 +63,8 @@ const EXTRA: Record<ElementType, Record<string, (v: unknown) => boolean>> = {
 
 const REQUIRED: Record<ElementType, string[]> = {
   shape: ['shape'],
-  photo: ['url'],
-  cutout: ['shape', 'url', 'cutWidth', 'cutHeight', 'photo'],
+  photo: ['url', 'photographer'],
+  cutout: ['shape', 'url', 'cutWidth', 'cutHeight', 'photo', 'photographer'],
 };
 
 const ALL_UPDATABLE = Object.assign({}, BASE, ...ELEMENT_TYPES.map((t) => EXTRA[t]));
