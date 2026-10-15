@@ -1,0 +1,23 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/auth/register'
+order: 26650
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {"email": "{{user2Email}}", "password": "sketch123", "displayName": "Second User"}
+scripts:
+  - type: beforeRequest
+    language: text/javascript
+    code: |-
+      pm.collectionVariables.set('user2Email', 'postman2-' + Date.now() + '@example.com');
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("201 and stores the second user's token", () => {
+        pm.response.to.have.status(201);
+        pm.collectionVariables.set('token2', pm.response.json().token);
+      });

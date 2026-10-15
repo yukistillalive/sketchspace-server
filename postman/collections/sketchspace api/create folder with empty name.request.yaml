@@ -1,0 +1,21 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/folders'
+order: 26300
+headers:
+  - key: Authorization
+    value: 'Bearer {{token}}'
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {"name":"   "}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('400 for a name that is empty after trimming', () => {
+        pm.response.to.have.status(400);
+        pm.expect(pm.response.json().error).to.match(/1-30/);
+      });

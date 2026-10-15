@@ -6,12 +6,16 @@ import {
   deleteCanvas,
   findCanvas,
   isValidCanvasId,
+  listCanvasByOwner,
   listSharedCanvas,
+  setCanvasOwnerUser,
+  toOwnedCanvas,
   toPublicCanvas,
   updateCanvas,
   type CanvasDoc,
   type CanvasUpdate,
   type NewCanvas,
+  type OwnedCanvas,
   type PublicCanvas,
 } from '../repositories/canvas.repository.js';
 import { deleteElementsByCanvas } from '../repositories/element.repository.js';
@@ -23,20 +27,29 @@ export type Failure = { ok: false; status: 400 | 403 | 404; error: string };
 
 const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
 
-/** True if `token` is the owner token this canvas was created with. */
-export function isOwner(canvas: CanvasDoc, token: unknown): boolean {
+/**
+ * True if the requester owns the canvas: the logged-in user is the account it belongs to, or
+ * `token` is the owner token it was created with.
+ */
+export function isOwner(canvas: CanvasDoc, token: unknown, userId?: string | null): boolean {
+  if (userId && canvas.ownerUserId === userId) return true;
   if (typeof token !== 'string' || !canvas.ownerTokenHash) return false;
   const given = Buffer.from(hashToken(token), 'hex');
   const stored = Buffer.from(canvas.ownerTokenHash, 'hex');
   return given.length === stored.length && timingSafeEqual(given, stored);
 }
 
-/** Creates a canvas and returns its id plus the secret owner token (only the hash is stored). */
+/**
+ * Creates a canvas and returns its id plus the secret owner token (only the hash is stored).
+ * A logged-in creator (`userId`) also becomes the owner as an account, so the canvas stays theirs
+ * on any device.
+ */
 export async function createCanvasWithOwner(
   input: NewCanvas,
+  userId?: string | null,
 ): Promise<{ canvasId: string; ownerToken: string }> {
   const ownerToken = randomBytes(32).toString('hex');
-  const canvasId = await createCanvas(input, hashToken(ownerToken));
+  const canvasId = await createCanvas(input, hashToken(ownerToken), userId ?? undefined);
   return { canvasId, ownerToken };
 }
 
@@ -44,17 +57,21 @@ export type AccessResult = { ok: true; canvas: CanvasDoc; isOwner: boolean } | F
 
 /**
  * Who can use a canvas (join it, read it, read or add strokes):
- *  - a shared canvas: anyone (the owner is recognised by the token)
+ *  - a shared canvas: anyone (the owner is recognised by the token or the login)
  *  - a private canvas: only its owner (solo mode)
  */
-export async function getAccessibleCanvas(id: unknown, ownerToken?: unknown): Promise<AccessResult> {
+export async function getAccessibleCanvas(
+  id: unknown,
+  ownerToken?: unknown,
+  userId?: string | null,
+): Promise<AccessResult> {
   if (typeof id !== 'string' || !isValidCanvasId(id))
     return { ok: false, status: 400, error: 'Invalid canvas id' };
 
   const canvas = await findCanvas(id);
   if (!canvas) return { ok: false, status: 404, error: 'Canvas not found' };
 
-  const owner = isOwner(canvas, ownerToken);
+  const owner = isOwner(canvas, ownerToken, userId);
   if (!canvas.isShared && !owner) return { ok: false, status: 403, error: 'Canvas is not shared' };
   return { ok: true, canvas, isOwner: owner };
 }
@@ -72,13 +89,14 @@ async function getManageableCanvas(
   id: string,
   ownerToken?: unknown,
   verifiedOwner = false,
+  userId?: string | null,
 ): Promise<AccessResult> {
   if (!isValidCanvasId(id)) return { ok: false, status: 400, error: 'Invalid canvas id' };
   const canvas = await findCanvas(id);
   if (!canvas) return { ok: false, status: 404, error: 'Canvas not found' };
 
-  const owner = verifiedOwner || isOwner(canvas, ownerToken);
-  if (canvas.ownerTokenHash && !owner)
+  const owner = verifiedOwner || isOwner(canvas, ownerToken, userId);
+  if ((canvas.ownerTokenHash || canvas.ownerUserId) && !owner)
     return { ok: false, status: 403, error: 'Only the owner can change this canvas' };
   return { ok: true, canvas, isOwner: owner };
 }
@@ -88,8 +106,9 @@ export async function updateCanvasAndNotify(
   id: string,
   changes: CanvasUpdate,
   ownerToken?: unknown,
+  userId?: string | null,
 ): Promise<{ ok: true } | Failure> {
-  const allowed = await getManageableCanvas(id, ownerToken);
+  const allowed = await getManageableCanvas(id, ownerToken, false, userId);
   if (!allowed.ok) return allowed;
 
   if (!(await updateCanvas(id, changes))) return { ok: false, status: 404, error: 'Canvas not found' };
@@ -101,8 +120,9 @@ export async function updateCanvasAndNotify(
 export async function deleteCanvasWithStrokes(
   id: string,
   ownerToken?: unknown,
+  userId?: string | null,
 ): Promise<{ ok: true } | Failure> {
-  const allowed = await getManageableCanvas(id, ownerToken);
+  const allowed = await getManageableCanvas(id, ownerToken, false, userId);
   if (!allowed.ok) return allowed;
 
   if (!(await deleteCanvas(id))) return { ok: false, status: 404, error: 'Canvas not found' };
@@ -118,13 +138,52 @@ export async function deleteCanvasWithStrokes(
  */
 export async function clearCanvasStrokes(
   id: string,
-  auth: { ownerToken?: unknown; verifiedOwner?: boolean },
+  auth: { ownerToken?: unknown; verifiedOwner?: boolean; userId?: string | null },
   senderSocketId?: string,
 ): Promise<{ ok: true; removed: number } | Failure> {
-  const allowed = await getManageableCanvas(id, auth.ownerToken, auth.verifiedOwner);
+  const allowed = await getManageableCanvas(id, auth.ownerToken, auth.verifiedOwner, auth.userId);
   if (!allowed.ok) return allowed;
 
   const removed = await deleteStrokesByCanvas(id);
   canvasEvents.emit('cleared', id, senderSocketId);
   return { ok: true, removed };
+}
+
+/** The canvases an account owns, shared and private, each with its `folderId` (null = in no folder). */
+export async function listCanvasesOf(userId: string): Promise<OwnedCanvas[]> {
+  return (await listCanvasByOwner(userId)).map(toOwnedCanvas);
+}
+
+/**
+ * Attaches a canvas that was created with an owner token (before logging in, or before accounts
+ * existed) to an account. The owner token proves it is theirs; a canvas that already belongs to
+ * another account is refused.
+ */
+export async function claimCanvas(
+  id: string,
+  ownerToken: unknown,
+  userId: string,
+): Promise<{ ok: true } | Failure> {
+  if (!isValidCanvasId(id)) return { ok: false, status: 400, error: 'Invalid canvas id' };
+  const canvas = await findCanvas(id);
+  if (!canvas) return { ok: false, status: 404, error: 'Canvas not found' };
+  if (canvas.ownerUserId === userId) return { ok: true };
+  if (canvas.ownerUserId || !isOwner(canvas, ownerToken))
+    return { ok: false, status: 403, error: 'Only the owner can claim this canvas' };
+
+  await setCanvasOwnerUser(id, userId);
+  return { ok: true };
+}
+
+/** Deletes every canvas an account owns, with its strokes and elements, and removes everyone from them. */
+export async function deleteCanvasesOfUser(userId: string): Promise<number> {
+  const owned = await listCanvasByOwner(userId);
+  for (const { _id } of owned) {
+    const id = _id.toString();
+    await deleteCanvas(id);
+    await deleteStrokesByCanvas(id);
+    await deleteElementsByCanvas(id);
+    canvasEvents.emit('deleted', id);
+  }
+  return owned.length;
 }

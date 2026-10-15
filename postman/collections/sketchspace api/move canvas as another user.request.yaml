@@ -1,0 +1,21 @@
+$kind: http-request
+method: PUT
+url: '{{baseUrl}}/api/canvas/{{folderCanvasId}}/folder'
+order: 26850
+headers:
+  - key: Authorization
+    value: 'Bearer {{token2}}'
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {"folderId":null}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("403 for another account's canvas", () => {
+        pm.response.to.have.status(403);
+        pm.expect(pm.response.json().error).to.match(/owner/i);
+      });

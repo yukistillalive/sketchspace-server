@@ -1,6 +1,6 @@
 $kind: collection
 name: Sketchspace API
-description: REST tests for the canvas, stroke and element endpoints. Run the requests in order; the create request stores canvasId for the later ones.
+description: REST tests for the canvas, stroke, element, auth and folder endpoints. Run the requests in order; the create request stores canvasId for the later ones.
 variables:
   - key: canvasId
     value: ''
@@ -11,3 +11,12 @@ variables:
   - key: elementId
     value: ''
     description: Set by the "add element" request
+  - key: folderId
+    value: ''
+    description: Set by the "create folder" request
+  - key: folderCanvasId
+    value: ''
+    description: Set by the "folder create canvas" request (a canvas owned by the logged-in account)
+  - key: token2
+    value: ''
+    description: Set by the "folder register second user" request (another account, for the 403 tests)

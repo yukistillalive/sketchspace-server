@@ -1,0 +1,15 @@
+$kind: http-request
+method: DELETE
+url: '{{baseUrl}}/api/folders/6abe45dcc09e70d0e46e4bbb'
+order: 26900
+headers:
+  - key: Authorization
+    value: 'Bearer {{token}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('404 for an unknown folder', () => {
+        pm.response.to.have.status(404);
+        pm.expect(pm.response.json().error).to.match(/not found/i);
+      });

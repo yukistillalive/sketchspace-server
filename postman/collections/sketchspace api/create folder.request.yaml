@@ -1,0 +1,27 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/folders'
+order: 26200
+headers:
+  - key: Authorization
+    value: 'Bearer {{token}}'
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {"name":"  Postman folder  "}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('201 and returns the folder with a trimmed name', () => {
+        pm.response.to.have.status(201);
+        const body = pm.response.json();
+        pm.expect(body.id).to.match(/^[0-9a-f]{24}$/);
+        pm.expect(body.name).to.eql('Postman folder');
+        pm.expect(body.createdAt).to.be.a('string');
+        pm.expect(body.updatedAt).to.be.a('string');
+        pm.expect(body).to.not.have.property('ownerUserId');
+        pm.collectionVariables.set('folderId', body.id);
+      });

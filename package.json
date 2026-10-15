@@ -8,10 +8,13 @@
     "start": "node --env-file=.env dist/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "test:socket": "tsx --test test/socket.test.ts",
-    "test": "tsx --test --test-concurrency=1 test/socket.test.ts test/canvas.service.test.ts",
+    "test": "tsx --test --test-concurrency=1 test/socket.test.ts test/canvas.service.test.ts test/cors.test.ts test/ownership.test.ts test/folder.service.test.ts",
     "test:service": "tsx --test test/canvas.service.test.ts",
     "test:unit": "JWT_SECRET=test-secret tsx --test test/auth.unit.test.ts",
-    "test:auth": "tsx --test test/auth.test.ts"
+    "test:auth": "tsx --test test/auth.test.ts",
+    "test:cors": "tsx --test test/cors.test.ts",
+    "test:ownership": "tsx --test test/ownership.test.ts",
+    "test:folder": "tsx --test test/folder.service.test.ts"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",
