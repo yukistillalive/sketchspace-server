@@ -8,7 +8,7 @@ import {
   verifyPassword,
   type GoogleProfile,
 } from '../services/auth.service.js';
-import { TOKEN_COOKIE } from '../middleware/auth.middleware.js';
+import { optionalUserId, TOKEN_COOKIE } from '../middleware/auth.middleware.js';
 import * as repo from '../repositories/user.repository.js';
 import {
   isValidDisplayName,
@@ -130,6 +130,15 @@ authRouter.post('/google', async (req, res) => {
     if (repo.isDuplicateKeyError(err)) return res.status(409).json({ error: 'Account already exists, try again' });
     throw err;
   }
+});
+
+// GET /api/auth/session  ->  { user } for a logged-in user, { user: null } for a guest.
+// The frontend asks this every time it opens. A guest gets 200 here (GET /api/users/me would answer 401),
+// so the browser does not print a red error in the console on every visit of someone who is not logged in.
+authRouter.get('/session', async (req, res) => {
+  const userId = optionalUserId(req);
+  const user = userId ? await repo.findUserById(userId) : null;
+  res.json({ user: user ? repo.toPublicUser(user) : null });
 });
 
 // POST /api/auth/logout  (clears the cookie; a copy of the token stays valid until it expires)

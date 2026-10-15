@@ -77,6 +77,11 @@ A canvas created while logged in also belongs to that account, so its owner can 
 
 Access levels: **Anyone**; **Shared** (anyone on a shared canvas, only the owner on a private one); **Owner** (only the owner); **Logged in** (a valid login cookie or `Authorization: Bearer <token>`).
 
+### Google Authentication
+The frontend gets an ID token from Google Identity Services (the `credential` Google returns after the user picks an account) and sends it to `POST /api/auth/google`. The server checks it with Google's public keys and that it was issued for **our** `GOOGLE_CLIENT_ID`, then: signs in the user with that Google id; or, if a user with the same *verified* email exists, links the Google account to it; or creates a new account. An unverified Google email is refused, so nobody can take over an account by signing up with someone else's address. Without `GOOGLE_CLIENT_ID` the endpoint answers `503` and everything else still works.
+
+To set it up, create an OAuth client of type **Web application** in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials), add the frontend's address (`http://localhost:8080` and `http://localhost`) under **Authorized JavaScript origins**, and put the client id in `GOOGLE_CLIENT_ID` (and `JWT_SECRET`) in the backend's `.env` **and** in the frontend's `VITE_GOOGLE_CLIENT_ID`. They must be the same value. Restart the server after changing `.env`. Without this, the google auth button will not be visible in the login page.
+
 ### REST endpoints
 
 Errors return `{ error }` with status `400` (invalid id or body), `401` (not logged in, on Logged in routes), `403` (private canvas or not the owner), `404` (unknown canvas, stroke, element or folder) or `409` (folder name already taken).
