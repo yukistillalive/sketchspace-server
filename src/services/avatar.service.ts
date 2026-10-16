@@ -13,6 +13,9 @@ const AVATAR_DIR = path.join(UPLOAD_ROOT, 'avatars');
 /** The avatarUrl of an uploaded picture is a path on this server: /uploads/avatars/<file>. */
 const AVATAR_URL_PREFIX = '/uploads/avatars/';
 
+export const MAX_AVATAR_BYTES = 2 * 1024 * 1024; // 2 MB
+export const AVATAR_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+
 export type AvatarExtension = 'png' | 'jpg' | 'webp';
 
 export function detectImageType(data: Buffer): AvatarExtension | null {
