@@ -77,6 +77,11 @@ A canvas created while logged in also belongs to that account, so its owner can 
 
 Access levels: **Anyone**; **Shared** (anyone on a shared canvas, only the owner on a private one); **Owner** (only the owner); **Logged in** (a valid login cookie or `Authorization: Bearer <token>`).
 
+### Google Authentication
+The frontend gets an ID token from Google Identity Services (the `credential` Google returns after the user picks an account) and sends it to `POST /api/auth/google`. The server checks it with Google's public keys and that it was issued for **our** `GOOGLE_CLIENT_ID`, then: signs in the user with that Google id; or, if a user with the same *verified* email exists, links the Google account to it; or creates a new account. An unverified Google email is refused, so nobody can take over an account by signing up with someone else's address. Without `GOOGLE_CLIENT_ID` the endpoint answers `503` and everything else still works.
+
+To set it up, create an OAuth client of type **Web application** in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials), add the frontend's address (`http://localhost:8080` and `http://localhost`) under **Authorized JavaScript origins**, and put the client id in `GOOGLE_CLIENT_ID` (and `JWT_SECRET`) in the backend's `.env` **and** in the frontend's `VITE_GOOGLE_CLIENT_ID`. They must be the same value. Restart the server after changing `.env`. Without this, the google auth button will not be visible in the login page.
+
 ### REST endpoints
 
 Errors return `{ error }` with status `400` (invalid id or body), `401` (not logged in, on Logged in routes), `403` (private canvas or not the owner), `404` (unknown canvas, stroke, element or folder) or `409` (folder name already taken).
@@ -240,18 +245,17 @@ Updates take any non-empty subset of these fields except `id`, `canvasId` and `t
 
 ## Deployment with Docker
 
-Runs the backend together with its MongoDB. Requires Docker (with Compose) and Git; there is nothing else to install. The frontend is deployed separately.
-
 1. Clone this repo on the server.
-2. Copy `.env.example` to `.env` and set `CLIENT_ORIGIN` (the address of your frontend) and `JWT_SECRET`. The file explains every setting.
+2. Copy `.env.example` to `.env` and set `CLIENT_ORIGIN`, `JWT_SECRET` and `SITE_ADDRESS` (the server's public hostname).
 3. Run `docker compose up -d --build`.
-4. Check that `http://<server>:3000/health` answers.
+4. Check that `https://<SITE_ADDRESS>/health` answers.
 
-To update, pull the repo and run step 3 again. Use `docker compose logs -f backend` for logs and `docker compose down` to stop; the database is kept in a Docker volume.
+### Connect to VPS
 
-- MongoDB is published only on the server's own `127.0.0.1:27018` (change with `MONGO_PORT`), so you can inspect it from that machine but not from outside. Do not expose it publicly: it has no password.
-- Serve the API over HTTPS in production (hosting platform or a reverse proxy). The login cookie is `Secure; SameSite=None`, so browsers drop it over plain HTTP, except on `localhost` in Chrome.
-- The frontend must send requests with credentials and its exact origin must match `CLIENT_ORIGIN`, otherwise the browser blocks the cookie.
+1. Connect to the server: `ssh root@<server-ip>`.
+2. On the server: `cd ~/sketchspace-server`, then `git pull`, then `docker compose up -d --build`.
+3. Check `docker compose ps` (services Up or healthy) and `https://<SITE_ADDRESS>/health`.
+4. Type `exit` to disconnect.
 
 ## Project structure
 

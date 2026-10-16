@@ -1,0 +1,5 @@
+# Public entry point. SITE_ADDRESS is the hostname (HTTPS is set up automatically for a hostname)
+# or ":80" for plain HTTP. REST and socket.io both go to the backend.
+{$SITE_ADDRESS::80} {
+	reverse_proxy backend:3000
+}

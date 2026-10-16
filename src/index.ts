@@ -14,12 +14,26 @@ import { userRouter } from './routes/user.routes.js';
 import { folderRouter } from './routes/folder.routes.js';
 import { ensureUserIndexes } from './repositories/user.repository.js';
 import { ensureFolderIndexes } from './repositories/folder.repository.js';
+import { UPLOAD_ROOT } from './services/avatar.service.js';
 
 const app = express();
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '300kb' })); // default 100kb is too small for avatars sent as data URLs (up to 200KB)
 app.use(cookieParser());
 app.use(express.static(new URL('../public', import.meta.url).pathname)); // demo client
+// uploaded avatars. Every upload gets a new file name, so browsers may cache them for good.
+app.use(
+  '/uploads',
+  express.static(UPLOAD_ROOT, {
+    index: false,
+    maxAge: '30d',
+    immutable: true,
+    setHeaders: (res) => {
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin'); // the frontend is on another origin
+    },
+  }),
+);
 app.get('/health', (_req, res) => {
   res.json({ ok: true });
 });
@@ -34,8 +48,7 @@ app.use('/api/users', userRouter);
 app.use('/api/folders', folderRouter);
 
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
-  if (err?.type === 'entity.too.large') // body over the express.json limit, e.g. a huge avatar
-    return res.status(400).json({ error: 'Request body is too large (max 300KB; avatar data URLs max 200KB)' });
+  if (err?.type === 'entity.too.large') return res.status(413).json({ error: 'Too large (pictures: 2 MB at most)' });
   console.error(err);
   res.status(500).json({ error: 'Internal server error' });
 };
