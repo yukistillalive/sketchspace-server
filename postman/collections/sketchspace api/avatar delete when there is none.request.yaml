@@ -1,0 +1,18 @@
+$kind: http-request
+method: DELETE
+url: '{{baseUrl}}/api/users/me/avatar'
+order: 26500
+headers:
+  - key: Authorization
+    value: 'Bearer {{token}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('200, and the user has no uploaded picture', () => {
+        pm.response.to.have.status(200);
+        const body = pm.response.json();
+        pm.expect(body.email).to.eql(pm.collectionVariables.get('userEmail'));
+        pm.expect(body.hasCustomAvatar).to.eql(false);
+        pm.expect(body).to.not.have.property('avatarUrl');
+      });

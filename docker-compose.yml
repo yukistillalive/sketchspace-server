@@ -21,6 +21,11 @@ services:
       mongo:
         condition: service_healthy
     # no ports: only Caddy reaches the backend, over the internal network
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      # uploaded profile pictures
+      - uploads-data:/app/uploads
     environment:
       MONGODB_URI: mongodb://mongo:27017/sketch-space
       PORT: 3000
@@ -51,3 +56,4 @@ services:
 volumes:
   mongo-data:
   caddy-data:
+  uploads-data:
