@@ -18,7 +18,7 @@ import { UPLOAD_ROOT } from './services/avatar.service.js';
 
 const app = express();
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: '300kb' })); // default 100kb is too small for avatars sent as data URLs (up to 200KB)
 app.use(cookieParser());
 app.use(express.static(new URL('../public', import.meta.url).pathname)); // demo client
 // uploaded avatars. Every upload gets a new file name, so browsers may cache them for good.

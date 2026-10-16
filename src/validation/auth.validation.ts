@@ -9,6 +9,10 @@ const PASSWORD_RE = /^(?=.*\p{L})(?=.*\d).{8,128}$/u;
 const DISPLAY_NAME_RE = /^[\p{L}\p{N}][\p{L}\p{N} _.-]{1,29}$/u;
 // https only, no whitespace
 const AVATAR_URL_RE = /^https:\/\/\S{1,500}$/;
+// an uploaded avatar: png/jpeg/webp image as a base64 data URL
+const AVATAR_DATA_URL_RE = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
+// max length of an avatar data URL (~200KB of text, about 150KB of image)
+export const MAX_AVATAR_DATA_URL_LENGTH = 200 * 1024;
 // a MongoDB ObjectId as a string
 const USER_ID_RE = /^[0-9a-f]{24}$/i;
 // characters not allowed in a display name (used to clean names coming from Google)
@@ -22,7 +26,19 @@ export const isValidPassword = (v: unknown): v is string => typeof v === 'string
 export const isValidDisplayName = (v: unknown): v is string =>
   typeof v === 'string' && DISPLAY_NAME_RE.test(v);
 
-export const isValidAvatarUrl = (v: unknown): v is string => typeof v === 'string' && AVATAR_URL_RE.test(v);
+/** Why an avatarUrl is rejected, or null if it is an https URL or a small png/jpeg/webp data URL. */
+export function avatarUrlError(v: unknown): string | null {
+  if (typeof v !== 'string') return 'avatarUrl must be a string, or null to remove it';
+  if (v.startsWith('data:')) {
+    if (v.length > MAX_AVATAR_DATA_URL_LENGTH) return 'avatarUrl data URL is too large (max 200KB)';
+    if (!AVATAR_DATA_URL_RE.test(v))
+      return 'avatarUrl data URL must be data:image/png, data:image/jpeg or data:image/webp with base64 data';
+    return null;
+  }
+  return AVATAR_URL_RE.test(v) ? null : 'avatarUrl must be an https URL or an image data URL';
+}
+
+export const isValidAvatarUrl = (v: unknown): v is string => avatarUrlError(v) === null;
 
 export const isValidUserId = (v: unknown): v is string => typeof v === 'string' && USER_ID_RE.test(v);
 

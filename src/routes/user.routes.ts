@@ -25,13 +25,18 @@ userRouter.get('/me', async (_req, res) => {
   res.json(repo.toPublicUser(user));
 });
 
-// PUT /api/users/me  { displayName?, avatarUrl? (string, or null to remove) }
+// PUT /api/users/me  { displayName?, avatarUrl? (https URL or png/jpeg/webp base64 data URL up to 200KB, or null to remove) }
 userRouter.put('/me', async (req, res) => {
   const body = parseBody(req.body);
-  if (!body || (body.displayName === undefined && body.avatarUrl === undefined))
+  if (!body || (body.displayName === undefined && body.avatarUrl === undefined)) {
+    const { avatarUrl } = (req.body ?? {}) as Record<string, unknown>;
     return res.status(400).json({
-      error: 'Provide displayName (2-30 characters) and/or avatarUrl (https URL or null)',
+      error:
+        (avatarUrl !== undefined && avatarUrl !== null && 
+         (avatarUrl)) ||
+        'Provide displayName (2-30 characters) and/or avatarUrl (https URL, image data URL, or null)',
     });
+  }
 
   const user = await repo.updateUser(authUserId(res), body);
   if (!user) return res.status(401).json({ error: 'Account no longer exists' });
