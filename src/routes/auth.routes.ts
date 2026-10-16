@@ -90,7 +90,14 @@ authRouter.post('/login', async (req, res) => {
 /** Finds the user for a verified Google profile: by Google id, else by email (linking), else creates one. */
 async function resolveGoogleUser(profile: GoogleProfile): Promise<{ user: repo.UserDoc; created: boolean } | null> {
   const byGoogleId = await repo.findUserByGoogleId(profile.googleId);
-  if (byGoogleId) return { user: byGoogleId, created: false };
+  if (byGoogleId) {
+    // keep the Google picture current; the picture the user chose is not touched
+    const refreshed =
+      profile.picture && profile.picture !== byGoogleId.googlePicture
+        ? await repo.setGooglePicture(byGoogleId._id.toString(), profile.picture)
+        : null;
+    return { user: refreshed ?? byGoogleId, created: false };
+  }
 
   const email = normalizeEmail(profile.email);
   const byEmail = await repo.findUserByEmail(email);
@@ -104,7 +111,7 @@ async function resolveGoogleUser(profile: GoogleProfile): Promise<{ user: repo.U
     email,
     displayName: toDisplayName(profile.name, email),
     googleId: profile.googleId,
-    ...(profile.picture ? { avatarUrl: profile.picture } : {}),
+    ...(profile.picture ? { googlePicture: profile.picture } : {}),
   });
   return { user, created: true };
 }
