@@ -245,18 +245,17 @@ Updates take any non-empty subset of these fields except `id`, `canvasId` and `t
 
 ## Deployment with Docker
 
-Runs the backend, its MongoDB and a Caddy web server that provides HTTPS. Requires Docker (with Compose) and Git; there is nothing else to install. The frontend is deployed separately.
-
 1. Clone this repo on the server.
-2. Copy `.env.example` to `.env` and set `CLIENT_ORIGIN` (the address of your frontend), `JWT_SECRET` and `SITE_ADDRESS` (the server's public hostname). The file explains every setting. Never put real secrets in `.env.example`; it is committed.
+2. Copy `.env.example` to `.env` and set `CLIENT_ORIGIN`, `JWT_SECRET` and `SITE_ADDRESS` (the server's public hostname).
 3. Run `docker compose up -d --build`.
 4. Check that `https://<SITE_ADDRESS>/health` answers.
 
-To update, pull the repo and run step 3 again. Use `docker compose logs -f backend` for logs and `docker compose down` to stop; the database is kept in a Docker volume.
+### Connect to VPS
 
-- MongoDB is published only on the server's own `127.0.0.1:27018` (change with `MONGO_PORT`), so you can inspect it from that machine but not from outside. Do not expose it publicly: it has no password.
-- Caddy gets and renews the HTTPS certificate automatically for the hostname in `SITE_ADDRESS`, as long as ports 80 and 443 are open and the name points at the server. The backend itself is not exposed. The login cookie is `Secure; SameSite=None`, so browsers drop it over plain HTTP, except on `localhost` in Chrome.
-- The frontend must send requests with credentials and its exact origin must match `CLIENT_ORIGIN`, otherwise the browser blocks the cookie.
+1. Connect to the server: `ssh root@<server-ip>`.
+2. On the server: `cd ~/sketchspace-server`, then `git pull`, then `docker compose up -d --build`.
+3. Check `docker compose ps` (services Up or healthy) and `https://<SITE_ADDRESS>/health`.
+4. Type `exit` to disconnect.
 
 ## Project structure
 
