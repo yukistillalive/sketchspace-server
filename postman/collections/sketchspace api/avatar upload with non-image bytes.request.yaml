@@ -1,0 +1,21 @@
+$kind: http-request
+method: PUT
+url: '{{baseUrl}}/api/users/me/avatar'
+order: 26300
+headers:
+  - key: Content-Type
+    value: image/png
+  - key: Authorization
+    value: 'Bearer {{token}}'
+body:
+  type: json
+  content: |-
+    this is not an image
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('400 when the bytes are not a PNG, JPEG or WebP, even with an image Content-Type', () => {
+        pm.response.to.have.status(400);
+        pm.expect(pm.response.json().error).to.be.a('string');
+      });
