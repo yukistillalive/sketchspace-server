@@ -1,0 +1,13 @@
+$kind: http-request
+# Runs before "auth register" on purpose: register and login make Postman keep the login cookie and send it
+# by itself, so a later request would no longer be "without a token".
+method: DELETE
+url: '{{baseUrl}}/api/users/me/avatar'
+order: 13200
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('401 without a token', () => {
+        pm.response.to.have.status(401);
+      });
