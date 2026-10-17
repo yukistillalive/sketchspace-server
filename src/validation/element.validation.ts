@@ -67,19 +67,18 @@ const REQUIRED: Record<ElementType, string[]> = {
   cutout: ['shape', 'url', 'cutWidth', 'cutHeight', 'photo'],
 };
 
-const ALL_UPDATABLE = Object.assign({}, BASE, ...ELEMENT_TYPES.map((t) => EXTRA[t]));
+const ALL_UPDATABLE: Record<string, (v: unknown) => boolean> = ELEMENT_TYPES.reduce(
+  (all, t) => ({ ...all, ...EXTRA[t] }),
+  BASE,
+);
 
 const isType = (v: unknown): v is ElementType => (ELEMENT_TYPES as readonly unknown[]).includes(v);
 
 /** Copies the fields in `checks` that are present, or null if one fails its check. */
 function pick(s: Record<string, unknown>, checks: Record<string, (v: unknown) => boolean>): Record<string, unknown> | null {
-  const out: Record<string, unknown> = {};
-  for (const [key, ok] of Object.entries(checks)) {
-    if (s[key] === undefined) continue;
-    if (!ok(s[key])) return null;
-    out[key] = key === 'photo' ? pickBox(s[key] as Box) : s[key];
-  }
-  return out;
+  const present = Object.entries(checks).filter(([key]) => s[key] !== undefined);
+  if (!present.every(([key, ok]) => ok(s[key]))) return null;
+  return Object.fromEntries(present.map(([key]) => [key, key === 'photo' ? pickBox(s[key] as Box) : s[key]]));
 }
 
 const pickBox = ({ x, y, width, height, rotation }: Box): Box => ({ x, y, width, height, rotation });

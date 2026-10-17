@@ -4,7 +4,7 @@ import { clearSessionCookie } from '../routes/auth.routes.js';
 import * as repo from '../repositories/user.repository.js';
 import { deleteCanvasesOfUser } from '../services/canvas.service.js';
 import { deleteFoldersOfUser } from '../services/folder.service.js';
-import { isValidAvatarUrl, isValidDisplayName } from '../validation/auth.validation.js';
+import { avatarUrlError, isValidAvatarUrl, isValidDisplayName } from '../validation/auth.validation.js';
 import {deleteAvatarFile,detectImageType,saveAvatarFile } from '../services/avatar.service.js';
 
 export const userRouter = Router();
@@ -33,7 +33,7 @@ userRouter.put('/me', async (req, res) => {
     return res.status(400).json({
       error:
         (avatarUrl !== undefined && avatarUrl !== null && 
-         (avatarUrl)) ||
+         avatarUrlError(avatarUrl)) ||
         'Provide displayName (2-30 characters) and/or avatarUrl (https URL, image data URL, or null)',
     });
   }

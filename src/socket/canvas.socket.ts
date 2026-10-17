@@ -98,6 +98,7 @@ export function registerCanvasSocket(io: CanvasServer): void {
     const { canvasId } = socket.data;
     if (!canvasId) return;
     socket.leave(canvasId);
+    // socket.data is socket.io's place for per-connection state, so it is assigned in place.
     socket.data.canvasId = undefined;
     socket.data.isOwner = undefined;
     announcePeers(canvasId);
@@ -109,6 +110,7 @@ export function registerCanvasSocket(io: CanvasServer): void {
       if (keepOwner && s.data.isOwner) continue;
       s.emit(notice);
       s.leave(canvasId);
+      // socket.data is socket.io's place for per-connection state, so it is assigned in place.
       s.data.canvasId = undefined;
       s.data.isOwner = undefined;
     }
@@ -150,6 +152,7 @@ export function registerCanvasSocket(io: CanvasServer): void {
 
   io.on('connection', (socket) => {
     // who is logged in is fixed for the life of the connection: after a login or logout the client reconnects
+    // socket.data is socket.io's place for per-connection state, so it is assigned in place.
     socket.data.userId = userIdFromCookieHeader(socket.handshake.headers.cookie) ?? undefined;
 
     // Join: validate (shared, or private + owner token) -> enter the room -> reply with the saved strokes.
@@ -162,6 +165,7 @@ export function registerCanvasSocket(io: CanvasServer): void {
 
       leaveCurrent(socket); // a socket sketches in one canvas at a time
       await socket.join(canvasId);
+      // socket.data is socket.io's place for per-connection state, so it is assigned in place.
       socket.data.canvasId = canvasId;
       socket.data.isOwner = joinable.isOwner;
 

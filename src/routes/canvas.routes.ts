@@ -1,5 +1,4 @@
 import { Router, type Request } from 'express';
-import * as repo from '../repositories/canvas.repository.js';
 import {
   claimCanvas,
   createCanvasWithOwner,
@@ -7,7 +6,9 @@ import {
   getAccessibleCanvas,
   listCanvasesOf,
   listPublicCanvases,
+  toPublicCanvas,
   updateCanvasAndNotify,
+  type CanvasUpdate,
 } from '../services/canvas.service.js';
 import { moveCanvasToFolder } from '../services/folder.service.js';
 import { authUserId, optionalUserId, requireAuth } from '../middleware/auth.middleware.js';
@@ -22,7 +23,7 @@ export const ownerTokenOf = (req: Request): string | undefined => req.header('x-
 export const userIdOf = (req: Request): string | undefined => optionalUserId(req) ?? undefined;
 
 /** Picks and type-checks the writable fields; returns null if any is the wrong type. */
-function parseBody(body: unknown): repo.CanvasUpdate | null {
+function parseBody(body: unknown): CanvasUpdate | null {
   const { name, isShared } = (body ?? {}) as Record<string, unknown>;
   if (name !== undefined && typeof name !== 'string') return null;
   if (isShared !== undefined && typeof isShared !== 'boolean') return null;
@@ -54,7 +55,7 @@ canvasRouter.get('/mine', requireAuth, async (_req, res) => {
 canvasRouter.get('/:id', async (req, res) => {
   const access = await getAccessibleCanvas(req.params.id, ownerTokenOf(req), userIdOf(req));
   if (!access.ok) return res.status(access.status).json({ error: access.error });
-  res.json({ ...repo.toPublicCanvas(access.canvas), isOwner: access.isOwner });
+  res.json({ ...toPublicCanvas(access.canvas), isOwner: access.isOwner });
 });
 
 // claim: attach a canvas made with an owner token to the logged-in account (the token proves it is theirs)
