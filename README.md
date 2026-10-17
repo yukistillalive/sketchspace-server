@@ -288,14 +288,8 @@ public/                   Demo client
 routes/ ──┐
 socket/ ──┼──▶ services/ ──▶ repositories/ ──▶ MongoDB
           │        │               │
-          └────────┴───────────────┴──▶ models/   (shared data shapes)
+          └────────┴───────────────┴──▶ models/
 ```
-
-Where something belongs:
-
-- A new endpoint: validate in `validation/`, put the rule in a service, and have the route call the service.
-- A new query: add it to the matching repository and call it from a service, never from a route.
-- A new field on an entity: add it to its file in `models/`, and update the `toPublic...` mapper if clients must not see it.
 
 ## Testing
 
@@ -304,12 +298,6 @@ npm test
 ```
 
 Tests need MongoDB. They use the `sketch-space-test` database and drop it afterwards; set `TEST_MONGODB_URI` to use another database whose name ends in `-test`.
-
-Tests connect to `mongodb://localhost:27017` by default. If MongoDB runs only through `docker compose`, it is published on port `27018` (`MONGO_PORT`), so run:
-
-```bash
-TEST_MONGODB_URI=mongodb://localhost:27018/sketch-space-test npm test
-```
 
 To run the REST collection with the [Postman CLI](https://learning.postman.com/docs/postman-cli/postman-cli-overview/), start the server and run:
 
