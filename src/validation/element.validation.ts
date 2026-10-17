@@ -1,5 +1,5 @@
 // Shared by the REST element endpoints and the socket handlers, so both enforce the same limits.
-import type { Box, ElementType, ElementUpdate, NewElement } from '../repositories/element.repository.js';
+import type { Box, ElementType, ElementUpdate, NewElement } from '../models/element.model.js';
 
 const ELEMENT_TYPES: readonly ElementType[] = ['shape', 'photo', 'cutout'];
 export const SHAPES = [

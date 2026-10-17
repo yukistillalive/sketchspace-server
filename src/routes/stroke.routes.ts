@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { clearCanvasStrokes, getAccessibleCanvas } from '../services/canvas.service.js';
 import { deleteStrokeById, listStrokeMessages, saveStroke } from '../services/stroke.service.js';
 import { parseStroke } from '../validation/stroke.validation.js';
-import { ownerTokenOf, userIdOf } from './canvas.routes.js';
+import { ownerTokenOf, userIdOf } from '../middleware/auth.middleware.js';
 
 export const strokeRouter = Router();
 

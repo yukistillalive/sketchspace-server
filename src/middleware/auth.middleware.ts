@@ -1,5 +1,5 @@
 import type { Request, RequestHandler, Response } from 'express';
-import { verifyToken } from '../services/auth.service.js';
+import { TOKEN_TTL_SECONDS, verifyToken } from '../services/auth.service.js';
 
 /** Name of the httpOnly cookie that carries the JWT. */
 export const TOKEN_COOKIE = 'token';
@@ -48,3 +48,29 @@ export const requireAuth: RequestHandler = (req, res, next) => {
 
 /** The id of the signed-in user. Only call it in handlers behind requireAuth. */
 export const authUserId = (res: Response): string => res.locals.userId as string;
+
+/** The owner token the client proves canvas ownership with (returned once by POST /api/canvas). */
+export const ownerTokenOf = (req: Request): string | undefined => req.header('x-owner-token');
+
+/** The logged-in user's id for canvas rules, undefined for a guest. */
+export const userIdOf = (req: Request): string | undefined => optionalUserId(req) ?? undefined;
+
+const isProduction = process.env.NODE_ENV === 'production';
+
+// httpOnly: not readable from JavaScript. In production the frontend is on another origin,
+// so the cookie must be sameSite=none (which requires https / secure).
+const cookieOptions = {
+  httpOnly: true,
+  secure: isProduction,
+  sameSite: isProduction ? ('none' as const) : ('lax' as const),
+  path: '/',
+};
+
+/** Stores the login token in the httpOnly cookie. */
+export const setSessionCookie = (res: Response, token: string): void => {
+  res.cookie(TOKEN_COOKIE, token, { ...cookieOptions, maxAge: TOKEN_TTL_SECONDS * 1000 });
+};
+
+export const clearSessionCookie = (res: Response): void => {
+  res.clearCookie(TOKEN_COOKIE, cookieOptions);
+};

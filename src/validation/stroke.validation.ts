@@ -1,5 +1,5 @@
 // Shared by the REST stroke endpoint and the socket handler, so both enforce the same limits.
-import type { NewStroke } from '../repositories/stroke.repository.js';
+import type { NewStroke } from '../models/stroke.model.js';
 
 const MAX_POINTS_PER_STROKE = 5000; // caps the size of one saved stroke
 

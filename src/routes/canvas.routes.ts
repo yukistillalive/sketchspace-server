@@ -1,38 +1,23 @@
-import { Router, type Request } from 'express';
+import { Router } from 'express';
 import {
   claimCanvas,
   createCanvasWithOwner,
   deleteCanvasWithStrokes,
-  getAccessibleCanvas,
+  getAccessibleCanvasView,
   listCanvasesOf,
   listPublicCanvases,
-  toPublicCanvas,
   updateCanvasAndNotify,
-  type CanvasUpdate,
 } from '../services/canvas.service.js';
 import { moveCanvasToFolder } from '../services/folder.service.js';
-import { authUserId, optionalUserId, requireAuth } from '../middleware/auth.middleware.js';
+import { authUserId, ownerTokenOf, requireAuth, userIdOf } from '../middleware/auth.middleware.js';
+import { parseCanvasBody } from '../validation/canvas.validation.js';
 import { parseFolderMove } from '../validation/folder.validation.js';
 
 export const canvasRouter = Router();
 
-/** The owner token the client proves ownership with (returned once by POST /api/canvas). */
-export const ownerTokenOf = (req: Request): string | undefined => req.header('x-owner-token');
-
-/** The logged-in user's id for canvas rules, undefined for a guest. */
-export const userIdOf = (req: Request): string | undefined => optionalUserId(req) ?? undefined;
-
-/** Picks and type-checks the writable fields; returns null if any is the wrong type. */
-function parseBody(body: unknown): CanvasUpdate | null {
-  const { name, isShared } = (body ?? {}) as Record<string, unknown>;
-  if (name !== undefined && typeof name !== 'string') return null;
-  if (isShared !== undefined && typeof isShared !== 'boolean') return null;
-  return { name, isShared };
-}
-
 // create
 canvasRouter.post('/', async (req, res) => {
-  const body = parseBody(req.body);
+  const body = parseCanvasBody(req.body);
   if (!body) return res.status(400).json({ error: 'Invalid canvas fields' });
 
   // ownerToken is shown once, here. Keep it: it proves ownership for everything private.
@@ -53,9 +38,9 @@ canvasRouter.get('/mine', requireAuth, async (_req, res) => {
 
 // read one (a private canvas needs the owner token or the owner's login); isOwner tells whether the caller owns it
 canvasRouter.get('/:id', async (req, res) => {
-  const access = await getAccessibleCanvas(req.params.id, ownerTokenOf(req), userIdOf(req));
-  if (!access.ok) return res.status(access.status).json({ error: access.error });
-  res.json({ ...toPublicCanvas(access.canvas), isOwner: access.isOwner });
+  const result = await getAccessibleCanvasView(req.params.id, ownerTokenOf(req), userIdOf(req));
+  if (!result.ok) return res.status(result.status).json({ error: result.error });
+  res.json(result.canvas);
 });
 
 // claim: attach a canvas made with an owner token to the logged-in account (the token proves it is theirs)
@@ -77,7 +62,7 @@ canvasRouter.put('/:id/folder', requireAuth, async (req, res) => {
 
 // update (partial: name and/or isShared; owner only)
 canvasRouter.put('/:id', async (req, res) => {
-  const body = parseBody(req.body);
+  const body = parseCanvasBody(req.body);
   if (!body || (body.name === undefined && body.isShared === undefined))
     return res.status(400).json({ error: 'Provide name (string) and/or isShared (boolean)' });
 

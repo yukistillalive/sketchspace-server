@@ -257,28 +257,45 @@ Updates take any non-empty subset of these fields except `id`, `canvasId` and `t
 3. Check `docker compose ps` (services Up or healthy) and `https://<SITE_ADDRESS>/health`.
 4. Type `exit` to disconnect.
 
-## Project structure
+## Project structure and architecture
+
+| Layer | Folder | Responsibility |
+|---|---|---|
+| Controller / Routes | `src/routes/`, `src/socket/`, `src/middleware/` | HTTP and socket.io: read the request, call one service, turn its result into a status code, JSON body or cookie. Authentication middleware and cookie handling live here. |
+| Service / Business logic | `src/services/` | Application rules shared by REST and sockets: ownership and access, folders, account registration and sign-in, avatar handling, cascade deletes. Input checks go through `src/validation/`. No `req`/`res`, no queries. |
+| Model / Domain | `src/models/` | The entities (`Canvas`, `Stroke`, `CanvasElement`, `Folder`, `User`), their default values and the mappers that strip private fields before data is sent to clients (`toPublicCanvas`, `toPublicUser`, ...). No logic that needs a database or HTTP. |
+| Persistence / Data access | `src/repositories/`, `src/db.ts` | The only code that talks to MongoDB: connection, indexes and queries. No business rules, no HTTP. |
 
 ```
 src/
-├── index.ts          Entry point
-├── db.ts             MongoDB connection
-├── routes/           REST handlers
-├── socket/           socket.io handlers
-├── services/         Rules shared by REST and sockets
-├── validation/       Input validation
-└── repositories/     MongoDB queries
-test/                 Socket and service tests
-postman/              REST collection and environment
-mongodb/              MongoDB playground
-public/               Demo client
+├── index.ts              Entry point: wires Express, socket.io and the database
+├── cors.ts               CORS settings
+├── db.ts                 MongoDB connection
+├── routes/               Controllers: REST endpoints (auth, user, canvas, stroke, element, folder)
+├── socket/               Controllers: socket.io events for live drawing
+├── middleware/           Login check, owner token, session cookie
+├── services/             Business logic (canvas, stroke, element, folder, user, auth, avatar)
+├── validation/           Input validation and parsing
+├── models/               Domain entities and their public views
+└── repositories/         MongoDB queries (one file per collection)
+test/                     Socket, service, HTTP and unit tests
+postman/                  REST collection and environment
+mongodb/                  MongoDB playground
+public/                   Demo client
 ```
 
 ```
 routes/ ──┐
-          ├──▶ services/ ──▶ repositories/ ──▶ MongoDB
-socket/ ──┘
+socket/ ──┼──▶ services/ ──▶ repositories/ ──▶ MongoDB
+          │        │               │
+          └────────┴───────────────┴──▶ models/   (shared data shapes)
 ```
+
+Where something belongs:
+
+- A new endpoint: validate in `validation/`, put the rule in a service, and have the route call the service.
+- A new query: add it to the matching repository and call it from a service, never from a route.
+- A new field on an entity: add it to its file in `models/`, and update the `toPublic...` mapper if clients must not see it.
 
 ## Testing
 
@@ -287,6 +304,12 @@ npm test
 ```
 
 Tests need MongoDB. They use the `sketch-space-test` database and drop it afterwards; set `TEST_MONGODB_URI` to use another database whose name ends in `-test`.
+
+Tests connect to `mongodb://localhost:27017` by default. If MongoDB runs only through `docker compose`, it is published on port `27018` (`MONGO_PORT`), so run:
+
+```bash
+TEST_MONGODB_URI=mongodb://localhost:27018/sketch-space-test npm test
+```
 
 To run the REST collection with the [Postman CLI](https://learning.postman.com/docs/postman-cli/postman-cli-overview/), start the server and run:
 

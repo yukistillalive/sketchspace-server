@@ -1,6 +1,6 @@
 // Folder rules: an account organises its own canvases into folders. Only the owner can see or
 // change a folder, and a canvas can be in at most one folder (its `folderId`).
-import { findCanvas, isValidCanvasId, removeFolderFromCanvases, setCanvasFolder } from '../repositories/canvas.repository.js';
+import { findCanvas, removeFolderFromCanvases, setCanvasFolder } from '../repositories/canvas.repository.js';
 import {
   createFolder as insertFolder,
   deleteFolder as removeFolder,
@@ -8,11 +8,10 @@ import {
   findFolder,
   listFoldersByOwner,
   renameFolder as changeFolderName,
-  toPublicFolder,
-  type FolderDoc,
-  type PublicFolder,
 } from '../repositories/folder.repository.js';
-import { isDuplicateKeyError } from '../repositories/user.repository.js';
+import { toPublicFolder, type FolderDoc, type PublicFolder } from '../models/folder.model.js';
+import { isDuplicateKeyError } from '../repositories/errors.js';
+import { isValidCanvasId } from '../validation/canvas.validation.js';
 import { isValidFolderId, MAX_FOLDER_NAME, parseFolderName } from '../validation/folder.validation.js';
 
 /** Why a request was refused. `status` is the matching HTTP status for REST handlers. */
