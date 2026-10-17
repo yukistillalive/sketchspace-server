@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { getAccessibleCanvas } from '../services/canvas.service.js';
 import { addElement, deleteElement, listElementMessages, updateElement } from '../services/element.service.js';
 import { parseElement, parseElementUpdate } from '../validation/element.validation.js';
-import { ownerTokenOf, userIdOf } from './canvas.routes.js';
+import { ownerTokenOf, userIdOf } from '../middleware/auth.middleware.js';
 
 export const elementRouter = Router();
 

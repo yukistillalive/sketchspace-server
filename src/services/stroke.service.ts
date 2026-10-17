@@ -1,15 +1,14 @@
 // Stroke rules shared by REST and sockets: one way to save a stroke (and tell the canvas about
 // it) and one wire shape for strokes.
-import { findCanvas, isValidCanvasId } from '../repositories/canvas.repository.js';
+import { findCanvas } from '../repositories/canvas.repository.js';
 import {
   addStroke,
   deleteLastStrokeByAuthor,
   deleteStroke,
   listStrokes,
-  type NewStroke,
-  type Stroke,
-  type StrokeDoc,
 } from '../repositories/stroke.repository.js';
+import type { NewStroke, Stroke, StrokeDoc } from '../models/stroke.model.js';
+import { isValidCanvasId } from '../validation/canvas.validation.js';
 import { canvasEvents } from './canvas.events.js';
 
 /** A stroke as clients see it, over REST and sockets alike: its fields plus `id` (no createdAt). */

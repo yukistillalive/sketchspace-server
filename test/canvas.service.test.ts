@@ -8,7 +8,8 @@ if (!/-test(\?|$)/.test(testUri))
 process.env.MONGODB_URI = testUri;
 
 const { connectDB, closeDB, getDb } = await import('../src/db.js');
-const { createCanvas, findCanvas, toPublicCanvas } = await import('../src/repositories/canvas.repository.js');
+const { createCanvas, findCanvas } = await import('../src/repositories/canvas.repository.js');
+const { toPublicCanvas } = await import('../src/models/canvas.model.js');
 const { addStroke, listStrokes } = await import('../src/repositories/stroke.repository.js');
 const { addElement: insertElement, listElements } = await import('../src/repositories/element.repository.js');
 const { parseElement, parseElementUpdate } = await import('../src/validation/element.validation.js');

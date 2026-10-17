@@ -1,26 +1,6 @@
-import { ObjectId, type Collection, type WithId } from 'mongodb';
+import { ObjectId, type Collection } from 'mongodb';
 import { getDb } from '../db.js';
-
-export interface Path {
-  x: number;
-  y: number;
-}
-
-export interface Stroke {
-  canvasId: string;
-  layerId: string;
-  path: Path[];
-  brush: string;
-  size: number;
-  color: string;
-  opacity: number;
-  createdAt: Date;
-  /** Who drew it: 'owner' or a socket id. Server-side only, never sent to clients. Absent for REST strokes. */
-  authorId?: string;
-}
-
-export type StrokeDoc = WithId<Stroke>;
-export type NewStroke = Omit<Stroke, 'createdAt'>;
+import type { NewStroke, Stroke, StrokeDoc } from '../models/stroke.model.js';
 
 const strokes = (): Collection<Stroke> => getDb().collection<Stroke>('strokes');
 

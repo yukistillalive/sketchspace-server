@@ -5,26 +5,24 @@ import {
   createCanvas,
   deleteCanvas,
   findCanvas,
-  isValidCanvasId,
   listCanvasByOwner,
   listSharedCanvas,
   setCanvasOwnerUser,
+  updateCanvas,
+} from '../repositories/canvas.repository.js';
+import {
   toOwnedCanvas,
   toPublicCanvas,
-  updateCanvas,
   type CanvasDoc,
   type CanvasUpdate,
   type NewCanvas,
   type OwnedCanvas,
   type PublicCanvas,
-} from '../repositories/canvas.repository.js';
+} from '../models/canvas.model.js';
+import { isValidCanvasId } from '../validation/canvas.validation.js';
 import { deleteElementsByCanvas } from '../repositories/element.repository.js';
 import { deleteStrokesByCanvas } from '../repositories/stroke.repository.js';
 import { canvasEvents } from './canvas.events.js';
-
-// Re-exported so route handlers depend on this service only, never on the repository.
-export { toPublicCanvas };
-export type { CanvasUpdate };
 
 /** Why a request was refused. `status` is the matching HTTP status for REST handlers. */
 export type Failure = { ok: false; status: 400 | 403 | 404; error: string };
@@ -78,6 +76,17 @@ export async function getAccessibleCanvas(
   const owner = isOwner(canvas, ownerToken, userId);
   if (!canvas.isShared && !owner) return { ok: false, status: 403, error: 'Canvas is not shared' };
   return { ok: true, canvas, isOwner: owner };
+}
+
+/** The canvas as a client sees it (no owner secrets) plus whether the caller owns it, or why it is refused. */
+export async function getAccessibleCanvasView(
+  id: unknown,
+  ownerToken?: unknown,
+  userId?: string | null,
+): Promise<{ ok: true; canvas: PublicCanvas & { isOwner: boolean } } | Failure> {
+  const access = await getAccessibleCanvas(id, ownerToken, userId);
+  if (!access.ok) return access;
+  return { ok: true, canvas: { ...toPublicCanvas(access.canvas), isOwner: access.isOwner } };
 }
 
 /** Canvases visible to everyone: the shared ones. Private canvases are not listed. */

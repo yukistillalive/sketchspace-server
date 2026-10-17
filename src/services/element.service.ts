@@ -1,15 +1,14 @@
 // Element rules shared by REST and sockets: one way to add, change and delete an element (and tell
 // the canvas about it) and one wire shape for elements.
-import { findCanvas, isValidCanvasId } from '../repositories/canvas.repository.js';
+import { findCanvas } from '../repositories/canvas.repository.js';
 import {
   addElement as insertElement,
   deleteElement as removeElement,
   listElements,
   updateElement as changeElement,
-  type ElementDoc,
-  type ElementUpdate,
-  type NewElement,
 } from '../repositories/element.repository.js';
+import type { ElementDoc, ElementUpdate, NewElement } from '../models/element.model.js';
+import { isValidCanvasId } from '../validation/canvas.validation.js';
 import { canvasEvents } from './canvas.events.js';
 
 /** An element as clients see it, over REST and sockets alike: its fields plus `id` (no _id). */

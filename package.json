@@ -8,7 +8,7 @@
     "start": "node --env-file=.env dist/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "test:socket": "tsx --test test/socket.test.ts",
-    "test": "tsx --test --test-concurrency=1 test/socket.test.ts test/canvas.service.test.ts test/cors.test.ts test/ownership.test.ts test/folder.service.test.ts",
+    "test": "JWT_SECRET=test-secret tsx --test --test-concurrency=1 test/socket.test.ts test/canvas.service.test.ts test/cors.test.ts test/ownership.test.ts test/folder.service.test.ts test/auth.test.ts test/auth.unit.test.ts test/avatar.unit.test.ts",
     "test:service": "tsx --test test/canvas.service.test.ts",
     "test:unit": "JWT_SECRET=test-secret tsx --test test/auth.unit.test.ts",
     "test:auth": "tsx --test test/auth.test.ts",

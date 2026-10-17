@@ -19,8 +19,8 @@ import {
   type Sender,
   type StrokeMessage,
 } from '../services/stroke.service.js';
-import type { ElementUpdate, NewElement } from '../repositories/element.repository.js';
-import type { NewStroke } from '../repositories/stroke.repository.js';
+import type { ElementUpdate, NewElement } from '../models/element.model.js';
+import type { NewStroke } from '../models/stroke.model.js';
 import { parseElement, parseElementUpdate } from '../validation/element.validation.js';
 import { parseStroke } from '../validation/stroke.validation.js';
 

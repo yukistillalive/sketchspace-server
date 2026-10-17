@@ -1,3 +1,5 @@
+import type { UserUpdate } from '../models/user.model.js';
+
 // Regex-based input filtering. Everything a client sends for accounts goes through here
 // before it is stored: clients are untrusted.
 
@@ -51,4 +53,19 @@ export function toDisplayName(name: string | undefined, email: string): string {
   if (isValidDisplayName(fromName)) return fromName;
   const fromEmail = (email.split('@')[0] ?? '').replace(DISPLAY_NAME_FORBIDDEN_RE, '').slice(0, 30);
   return isValidDisplayName(fromEmail) ? fromEmail : 'Artist';
+}
+
+const PROFILE_UPDATE_HINT =
+  'Provide displayName (2-30 characters) and/or avatarUrl (https URL, image data URL, or null)';
+
+/** Picks and checks the editable profile fields. Returns the changes, or the message to answer with. */
+export function parseProfileUpdate(body: unknown): { update: UserUpdate } | { error: string } {
+  const { displayName, avatarUrl } = (body ?? {}) as Record<string, unknown>;
+  if (displayName !== undefined && !isValidDisplayName(displayName)) return { error: PROFILE_UPDATE_HINT };
+  if (avatarUrl !== undefined && avatarUrl !== null) {
+    const problem = avatarUrlError(avatarUrl);
+    if (problem) return { error: problem };
+  }
+  if (displayName === undefined && avatarUrl === undefined) return { error: PROFILE_UPDATE_HINT };
+  return { update: { displayName, avatarUrl } as UserUpdate };
 }

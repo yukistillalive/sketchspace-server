@@ -1,30 +1,6 @@
-import { ObjectId, type Collection, type WithId } from 'mongodb';
+import { ObjectId, type Collection } from 'mongodb';
 import { getDb } from '../db.js';
-
-export interface Folder {
-  /** The account the folder belongs to. Never sent to clients. */
-  ownerUserId: string;
-  name: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export type FolderDoc = WithId<Folder>;
-
-/** A folder as sent to clients: `id` instead of _id, and no owner (it is always the caller). */
-export interface PublicFolder {
-  id: string;
-  name: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export const toPublicFolder = ({ _id, name, createdAt, updatedAt }: FolderDoc): PublicFolder => ({
-  id: _id.toString(),
-  name,
-  createdAt,
-  updatedAt,
-});
+import type { Folder, FolderDoc } from '../models/folder.model.js';
 
 const folders = (): Collection<Folder> => getDb().collection<Folder>('folders');
 
