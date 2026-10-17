@@ -1,0 +1,24 @@
+$kind: http-request
+method: PUT
+url: '{{baseUrl}}/api/users/me'
+order: 26120
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: Authorization
+    value: 'Bearer {{token}}'
+body:
+  type: json
+  content: |-
+    {"avatarUrl": "not a url"}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('400 with a reason, not the value that was sent', () => {
+        pm.response.to.have.status(400);
+        const error = pm.response.json().error;
+        pm.expect(error).to.be.a('string');
+        pm.expect(error).to.not.eql('not a url');
+        pm.expect(error).to.include('avatarUrl must be');
+      });

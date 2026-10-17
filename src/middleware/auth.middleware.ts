@@ -41,6 +41,7 @@ export const requireAuth: RequestHandler = (req, res, next) => {
   const userId = verifyToken(token);
   if (!userId) return res.status(401).json({ error: 'Invalid or expired token' });
 
+  // res.locals is Express's place for per-request state; later handlers read it via authUserId(res).
   res.locals.userId = userId;
   next();
 };

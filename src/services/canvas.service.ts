@@ -22,6 +22,10 @@ import { deleteElementsByCanvas } from '../repositories/element.repository.js';
 import { deleteStrokesByCanvas } from '../repositories/stroke.repository.js';
 import { canvasEvents } from './canvas.events.js';
 
+// Re-exported so route handlers depend on this service only, never on the repository.
+export { toPublicCanvas };
+export type { CanvasUpdate };
+
 /** Why a request was refused. `status` is the matching HTTP status for REST handlers. */
 export type Failure = { ok: false; status: 400 | 403 | 404; error: string };
 

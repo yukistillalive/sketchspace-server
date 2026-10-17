@@ -4,6 +4,7 @@ const uri = process.env.MONGODB_URI;
 if (!uri) throw new Error('MONGODB_URI is not set');
 
 const client = new MongoClient(uri);
+// `let`, not `const`: there is no connection until connectDB() runs at startup, and closeDB() clears it again.
 let db: Db | undefined;
 
 export async function connectDB(): Promise<void> {
