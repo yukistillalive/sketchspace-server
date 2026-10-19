@@ -1,0 +1,15 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/auth/session'
+order: 30100
+headers:
+  - key: Authorization
+    value: 'Bearer {{token}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('200 and user is null once the account is deleted', () => {
+        pm.response.to.have.status(200);
+        pm.expect(pm.response.json()).to.eql({ user: null });
+      });

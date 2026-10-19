@@ -1,0 +1,17 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/canvas/not-an-id/claim'
+order: 26143
+headers:
+  - key: Authorization
+    value: 'Bearer {{token}}'
+  - key: X-Owner-Token
+    value: '{{claimOwnerToken}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('400 for an invalid canvas id', () => {
+        pm.response.to.have.status(400);
+        pm.expect(pm.response.json().error).to.be.a('string');
+      });

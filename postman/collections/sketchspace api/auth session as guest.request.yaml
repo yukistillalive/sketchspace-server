@@ -1,0 +1,12 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/auth/session'
+order: 13050
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('200 and user is null for a guest', () => {
+        pm.response.to.have.status(200);
+        pm.expect(pm.response.json()).to.eql({ user: null });
+      });

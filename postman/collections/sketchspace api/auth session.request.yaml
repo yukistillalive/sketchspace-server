@@ -1,0 +1,17 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/auth/session'
+order: 21100
+headers:
+  - key: Authorization
+    value: 'Bearer {{token}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('200 and returns the signed-in user', () => {
+        pm.response.to.have.status(200);
+        const body = pm.response.json();
+        pm.expect(body.user.email).to.eql(pm.collectionVariables.get('userEmail'));
+        pm.expect(body.user).to.not.have.property('passwordHash');
+      });
