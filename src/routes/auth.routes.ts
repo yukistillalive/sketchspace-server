@@ -1,6 +1,13 @@
 import { Router } from 'express';
 import { clearSessionCookie, optionalUserId, setSessionCookie } from '../middleware/auth.middleware.js';
-import { getSessionUser, login, loginWithGoogle, register } from '../services/user.service.js';
+import {
+  getSessionUser,
+  login,
+  loginWithGoogle,
+  register,
+  requestPasswordReset,
+  resetPassword,
+} from '../services/user.service.js';
 
 export const authRouter = Router();
 
@@ -26,6 +33,21 @@ authRouter.post('/google', async (req, res) => {
   if (!result.ok) return res.status(result.status).json({ error: result.error });
   setSessionCookie(res, result.token);
   res.status(result.created ? 201 : 200).json({ user: result.user, token: result.token });
+});
+
+// POST /api/auth/forgot-password  { email }
+// Sends a reset link to the address if an account has it. Answers { ok: true } either way.
+authRouter.post('/forgot-password', async (req, res) => {
+  const result = await requestPasswordReset(req.body);
+  if (!result.ok) return res.status(result.status).json({ error: result.error });
+  res.json({ ok: true });
+});
+
+// POST /api/auth/reset-password  { token, password }   (token = the one in the link from the e-mail)
+authRouter.post('/reset-password', async (req, res) => {
+  const result = await resetPassword(req.body);
+  if (!result.ok) return res.status(result.status).json({ error: result.error });
+  res.json({ ok: true });
 });
 
 // GET /api/auth/session  ->  { user } for a logged-in user, { user: null } for a guest.

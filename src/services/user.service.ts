@@ -8,6 +8,7 @@ import {
   findUserById,
   linkGoogleAccount,
   setGooglePicture,
+  setPasswordHash,
   updateUser,
 } from '../repositories/user.repository.js';
 import { isDuplicateKeyError } from '../repositories/errors.js';
@@ -15,11 +16,15 @@ import { isUploadedAvatar, toPublicUser, type PublicUser, type UserDoc } from '.
 import {
   hashPassword,
   isGoogleAuthConfigured,
+  passwordFingerprint,
+  signResetToken,
   signToken,
   verifyGoogleIdToken,
   verifyPassword,
+  verifyResetToken,
   type GoogleProfile,
 } from './auth.service.js';
+import { sendPasswordResetEmail } from './mail.service.js';
 import { deleteAvatarFile, detectImageType, saveAvatarFile } from './avatar.service.js';
 import { deleteCanvasesOfUser } from './canvas.service.js';
 import { deleteFoldersOfUser } from './folder.service.js';
@@ -138,6 +143,63 @@ export async function loginWithGoogle(input: unknown): Promise<Session | UserFai
     if (isDuplicateKeyError(err)) return { ok: false, status: 409, error: 'Account already exists, try again' };
     throw err;
   }
+}
+
+// ---------- forgotten password ----------
+
+// Where the reset link points: the address of the frontend, including its path (GitHub Pages: .../Sketchspace).
+// The links use "#/", because the frontend routes with the part after the #.
+const resetLinkBase = (process.env.CLIENT_URL || process.env.CLIENT_ORIGIN?.split(',')[0] || 'http://localhost:8080')
+  .trim()
+  .replace(/\/+$/, '');
+
+// at most one e-mail per address per minute, so nobody can use the form to fill an inbox
+const RESET_COOLDOWN_MS = 60_000;
+const lastResetRequest = new Map<string, number>();
+
+/**
+ * Sends a reset link to the address, if an account has it. The answer is the same for every valid address,
+ * so the form cannot be used to find out who has an account.
+ */
+export async function requestPasswordReset(input: unknown): Promise<{ ok: true } | UserFailure> {
+  const { email } = (input ?? {}) as Record<string, unknown>;
+  if (!isValidEmail(email)) return { ok: false, status: 400, error: 'Invalid email' };
+  const address = normalizeEmail(email);
+
+  const now = Date.now();
+  for (const [known, askedAt] of lastResetRequest) if (now - askedAt > RESET_COOLDOWN_MS) lastResetRequest.delete(known);
+
+  const user = await findUserByEmail(address);
+  if (user && !lastResetRequest.has(address)) {
+    lastResetRequest.set(address, now);
+    const token = signResetToken(user._id.toString(), user.passwordHash);
+    const link = `${resetLinkBase}/#/reset-password?token=${token}`;
+    // not awaited: sending takes a moment, and the answer must not show whether the address exists
+    void sendPasswordResetEmail(address, link).catch((err) => console.error('Could not send the reset e-mail', err));
+  }
+  return { ok: true };
+}
+
+const BAD_RESET_LINK: UserFailure = {
+  ok: false,
+  status: 400,
+  error: 'This reset link is not valid any more. Ask for a new one.',
+};
+
+/** Sets a new password with the token from a reset link. The link works once. */
+export async function resetPassword(input: unknown): Promise<{ ok: true } | UserFailure> {
+  const { token, password } = (input ?? {}) as Record<string, unknown>;
+  if (typeof token !== 'string' || token.length === 0) return BAD_RESET_LINK;
+  if (!isValidPassword(password))
+    return { ok: false, status: 400, error: 'Password must be 8-128 characters and contain a letter and a digit' };
+
+  const claims = verifyResetToken(token);
+  const user = claims ? await findUserById(claims.userId) : null;
+  // the fingerprint no longer matches once the password was changed: that is what makes the link single-use
+  if (!claims || !user || claims.fingerprint !== passwordFingerprint(user.passwordHash)) return BAD_RESET_LINK;
+
+  const changed = await setPasswordHash(user._id.toString(), await hashPassword(password), user.passwordHash);
+  return changed ? { ok: true } : BAD_RESET_LINK;
 }
 
 /** The user behind a login, or null for a guest (or a deleted account). */
