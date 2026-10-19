@@ -1,0 +1,15 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/canvas/{{claimCanvasId}}/claim'
+order: 26142
+headers:
+  - key: Authorization
+    value: 'Bearer {{token}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('403 without the owner token', () => {
+        pm.response.to.have.status(403);
+        pm.expect(pm.response.json().error).to.match(/owner/i);
+      });

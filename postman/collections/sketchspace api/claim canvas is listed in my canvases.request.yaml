@@ -1,0 +1,17 @@
+$kind: http-request
+method: GET
+url: '{{baseUrl}}/api/canvas/mine'
+order: 26146
+headers:
+  - key: Authorization
+    value: 'Bearer {{token}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('200 and the claimed canvas is listed without a folder', () => {
+        pm.response.to.have.status(200);
+        const canvas = pm.response.json().find((c) => c._id === pm.collectionVariables.get('claimCanvasId'));
+        pm.expect(canvas).to.exist;
+        pm.expect(canvas.folderId).to.eql(null);
+      });

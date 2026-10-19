@@ -1,0 +1,15 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/canvas/{{claimCanvasId}}/claim'
+order: 13610
+headers:
+  - key: X-Owner-Token
+    value: '{{claimOwnerToken}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('401 without a login', () => {
+        pm.response.to.have.status(401);
+        pm.expect(pm.response.json().error).to.be.a('string');
+      });

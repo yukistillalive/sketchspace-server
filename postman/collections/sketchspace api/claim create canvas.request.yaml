@@ -1,0 +1,22 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/canvas'
+order: 13600
+headers:
+  - key: Content-Type
+    value: 'application/json'
+body:
+  type: json
+  content: |-
+    {"name":"postman claim canvas","isShared":false}
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('201 and returns a guest canvas with an owner token', () => {
+        pm.response.to.have.status(201);
+        const body = pm.response.json();
+        pm.collectionVariables.set('claimCanvasId', body.canvasId);
+        pm.collectionVariables.set('claimOwnerToken', body.ownerToken);
+        pm.expect(body.ownerToken).to.match(/^[0-9a-f]{64}$/);
+      });

@@ -1,0 +1,17 @@
+$kind: http-request
+method: POST
+url: '{{baseUrl}}/api/canvas/{{claimCanvasId}}/claim'
+order: 26145
+headers:
+  - key: Authorization
+    value: 'Bearer {{token}}'
+  - key: X-Owner-Token
+    value: '{{claimOwnerToken}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test('200 and the canvas now belongs to the account', () => {
+        pm.response.to.have.status(200);
+        pm.expect(pm.response.json()).to.eql({ ok: true });
+      });
