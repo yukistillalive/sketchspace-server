@@ -63,6 +63,18 @@ export function updateUser(id: string, changes: UserUpdate): Promise<UserDoc | n
   );
 }
 
+/**
+ * Replaces the password, but only if the user still has the password the reset link was made for
+ * (undefined: an account that has none yet, e.g. a Google account). Returns false if it no longer matches.
+ */
+export async function setPasswordHash(id: string, passwordHash: string, expectedOldHash: string | undefined): Promise<boolean> {
+  const result = await users().updateOne(
+    { _id: new ObjectId(id), passwordHash: expectedOldHash ?? { $exists: false } },
+    { $set: { passwordHash, updatedAt: new Date() } },
+  );
+  return result.modifiedCount > 0;
+}
+
 export async function deleteUser(id: string): Promise<boolean> {
   const result = await users().deleteOne({ _id: new ObjectId(id) });
   return result.deletedCount > 0;
