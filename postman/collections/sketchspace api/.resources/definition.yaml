@@ -20,3 +20,9 @@ variables:
   - key: token2
     value: ''
     description: Set by the "folder register second user" request (another account, for the 403 tests)
+  - key: claimCanvasId
+    value: ''
+    description: Set by the "claim create canvas" request (a guest canvas, to be claimed)
+  - key: claimOwnerToken
+    value: ''
+    description: Set by the "claim create canvas" request
