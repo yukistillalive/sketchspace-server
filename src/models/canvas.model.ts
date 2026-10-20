@@ -8,8 +8,13 @@ export interface Layer {
 
 export interface Canvas {
   name: string;
-  /** A shared canvas can be joined by other users; an unshared one is private. */
+  /** A shared canvas can be joined by anyone who has its id; an unshared one is private. */
   isShared: boolean;
+  /**
+   * A public canvas is also listed in the Gallery. Public implies shared. Absent on canvases created
+   * before the Gallery was separate from sharing: those count as public when they are shared.
+   */
+  isPublic?: boolean;
   createdAt: Date;
   updatedAt: Date;
   layers: Layer[];
@@ -31,7 +36,10 @@ export type CanvasDoc = WithId<Canvas>;
  * A canvas as sent to clients: everything except the owner token hash, the owner account and the
  * folder (folders are private to the owner).
  */
-export type PublicCanvas = Omit<CanvasDoc, 'ownerTokenHash' | 'ownerUserId' | 'folderId'>;
+export type PublicCanvas = Omit<CanvasDoc, 'ownerTokenHash' | 'ownerUserId' | 'folderId' | 'isPublic'> & { isPublic: boolean };
+
+/** Whether a canvas is listed in the Gallery (canvases without the field follow isShared). */
+export const isListed = (doc: Pick<Canvas, 'isShared' | 'isPublic'>): boolean => doc.isPublic ?? doc.isShared;
 
 export function toPublicCanvas({
   ownerTokenHash: _hash,
@@ -39,7 +47,7 @@ export function toPublicCanvas({
   folderId: _folder,
   ...rest
 }: CanvasDoc): PublicCanvas {
-  return rest;
+  return { ...rest, isPublic: isListed(rest) };
 }
 
 /** A canvas as sent to its owner: the public view plus its folder (null = in no folder). */
@@ -50,6 +58,7 @@ export const toOwnedCanvas = (doc: CanvasDoc): OwnedCanvas => ({ ...toPublicCanv
 export interface NewCanvas {
   name?: string;
   isShared?: boolean;
+  isPublic?: boolean;
 }
 
 export type CanvasUpdate = NewCanvas;

@@ -11,14 +11,16 @@ import {
 const canvas = (): Collection<Canvas> => getDb().collection<Canvas>('canvas');
 
 export async function createCanvas(
-  { name, isShared }: NewCanvas,
+  { name, isShared, isPublic }: NewCanvas,
   ownerTokenHash?: string,
   ownerUserId?: string,
 ): Promise<string> {
   const now = new Date();
   const result = await canvas().insertOne({
     name: name ?? 'untitled',
-    isShared: isShared ?? false,
+    // public implies shared
+    isShared: (isShared ?? false) || (isPublic ?? false),
+    isPublic: isPublic ?? false,
     createdAt: now,
     updatedAt: now,
     layers: DEFAULT_LAYERS,
@@ -32,8 +34,9 @@ export function listCanvas(): Promise<CanvasDoc[]> {
   return canvas().find().toArray();
 }
 
-export function listSharedCanvas(): Promise<CanvasDoc[]> {
-  return canvas().find({ isShared: true }).toArray();
+/** The canvases listed in the Gallery: public ones, and older shared ones that have no isPublic field. */
+export function listPublicCanvas(): Promise<CanvasDoc[]> {
+  return canvas().find({ $or: [{ isPublic: true }, { isPublic: { $exists: false }, isShared: true }] }).toArray();
 }
 
 /** The canvases an account owns (shared and private), most recently changed first. */
@@ -71,6 +74,7 @@ export async function updateCanvas(id: string, changes: CanvasUpdate): Promise<b
   const set: Partial<Canvas> = { updatedAt: new Date() };
   if (changes.name !== undefined) set.name = changes.name;
   if (changes.isShared !== undefined) set.isShared = changes.isShared;
+  if (changes.isPublic !== undefined) set.isPublic = changes.isPublic;
 
   const result = await canvas().updateOne({ _id: new ObjectId(id) }, { $set: set });
   return result.matchedCount > 0;

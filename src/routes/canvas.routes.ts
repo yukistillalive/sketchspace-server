@@ -60,11 +60,11 @@ canvasRouter.put('/:id/folder', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
-// update (partial: name and/or isShared; owner only)
+// update (partial: name, isShared (joinable by id) and/or isPublic (listed in the Gallery); owner only)
 canvasRouter.put('/:id', async (req, res) => {
   const body = parseCanvasBody(req.body);
-  if (!body || (body.name === undefined && body.isShared === undefined))
-    return res.status(400).json({ error: 'Provide name (string) and/or isShared (boolean)' });
+  if (!body || (body.name === undefined && body.isShared === undefined && body.isPublic === undefined))
+    return res.status(400).json({ error: 'Provide name (string), isShared (boolean) and/or isPublic (boolean)' });
 
   const result = await updateCanvasAndNotify(req.params.id, body, ownerTokenOf(req), userIdOf(req));
   if (!result.ok) return res.status(result.status).json({ error: result.error });

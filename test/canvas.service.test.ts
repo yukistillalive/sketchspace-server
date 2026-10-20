@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
+import { ObjectId } from 'mongodb';
 
 // Same safety rule as socket.test.ts: only ever touch a database named "...-test".
 const testUri = process.env.TEST_MONGODB_URI ?? 'mongodb://localhost:27017/sketch-space-test';
@@ -105,12 +106,14 @@ describe('getAccessibleCanvas', () => {
 
 describe('listPublicCanvases', () => {
   // Private canvases (and their ids) are not advertised, and no owner data is included.
-  it('lists shared canvases only, without owner data', async () => {
-    const shared = await createCanvasWithOwner({ name: 'listed', isShared: true });
+  it('lists public canvases only, without owner data', async () => {
+    const listed = await createCanvasWithOwner({ name: 'listed', isPublic: true });
+    const byId = await createCanvasWithOwner({ name: 'by-id', isShared: true });
     const hidden = await createCanvasWithOwner({ name: 'unlisted', isShared: false });
     const list = await listPublicCanvases();
     const ids = list.map((c) => c._id.toString());
-    assert.ok(ids.includes(shared.canvasId));
+    assert.ok(ids.includes(listed.canvasId));
+    assert.equal(ids.includes(byId.canvasId), false); // shared by id, not in the Gallery
     assert.equal(ids.includes(hidden.canvasId), false);
     assert.equal(JSON.stringify(list).includes('ownerTokenHash'), false);
   });
@@ -170,6 +173,42 @@ describe('updateCanvasAndNotify', () => {
     await updateCanvasAndNotify(canvasId, { isShared: false }, ownerToken);
     assert.deepEqual(events.seen, [[canvasId]]);
     events.stop();
+  });
+
+  // Sharing by id and being listed in the Gallery are separate; public needs shared.
+  it('keeps sharing and the Gallery separate', async () => {
+    const { canvasId, ownerToken } = await createCanvasWithOwner({});
+    const gallery = async () => (await listPublicCanvases()).some((c) => c._id.toString() === canvasId);
+
+    await updateCanvasAndNotify(canvasId, { isShared: true }, ownerToken);
+    assert.equal((await findCanvas(canvasId))?.isShared, true);
+    assert.equal(await gallery(), false); // joinable by id, not listed
+
+    await updateCanvasAndNotify(canvasId, { isPublic: true }, ownerToken);
+    assert.equal(await gallery(), true);
+
+    await updateCanvasAndNotify(canvasId, { isPublic: false }, ownerToken);
+    assert.equal((await findCanvas(canvasId))?.isShared, true); // still shared by id
+    assert.equal(await gallery(), false);
+
+    // making it public shares it; making it private unlists it
+    await updateCanvasAndNotify(canvasId, { isShared: false }, ownerToken);
+    await updateCanvasAndNotify(canvasId, { isPublic: true }, ownerToken);
+    assert.equal((await findCanvas(canvasId))?.isShared, true);
+    await updateCanvasAndNotify(canvasId, { isShared: false }, ownerToken);
+    assert.equal(await gallery(), false);
+
+    const conflict = await updateCanvasAndNotify(canvasId, { isShared: false, isPublic: true }, ownerToken);
+    assert.equal(conflict.ok, false);
+  });
+
+  // Canvases created before isPublic existed are listed when shared, and stay that way.
+  it('lists older shared canvases that have no isPublic', async () => {
+    const { canvasId, ownerToken } = await createCanvasWithOwner({ isShared: true });
+    await getDb().collection('canvas').updateOne({ _id: new ObjectId(canvasId) }, { $unset: { isPublic: '' } });
+    assert.ok((await listPublicCanvases()).some((c) => c._id.toString() === canvasId));
+    await updateCanvasAndNotify(canvasId, { isShared: true }, ownerToken);
+    assert.ok((await listPublicCanvases()).some((c) => c._id.toString() === canvasId));
   });
 
   // Canvases created before owners existed are still manageable by anyone.

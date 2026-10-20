@@ -102,12 +102,12 @@ Errors return `{ "error": "message" }` with status `400` (invalid id or body), `
 | PUT | `/api/users/me/avatar` | image bytes (`image/png`, `jpeg`, `webp`, max 2 MB) | `200` user | Logged in |
 | DELETE | `/api/users/me/avatar` | | `200` user | Logged in |
 | DELETE | `/api/users/me` | | `200 { ok }` (also deletes its canvases and folders) | Logged in |
-| POST | `/api/canvas` | `{ name?, isShared? }` | `201 { canvasId, ownerToken }` | Anyone |
-| GET | `/api/canvas` | | `200` shared canvases | Anyone |
+| POST | `/api/canvas` | `{ name?, isShared?, isPublic? }` | `201 { canvasId, ownerToken }` | Anyone |
+| GET | `/api/canvas` | | `200` public canvases (the Gallery) | Anyone |
 | GET | `/api/canvas/mine` | | `200` the user's canvases, each with `folderId` | Logged in |
 | GET | `/api/canvas/:id` | | `200` canvas with `isOwner` | Shared |
 | POST | `/api/canvas/:id/claim` | | `200 { ok }` | Logged in + owner token |
-| PUT | `/api/canvas/:id` | `{ name?, isShared? }` | `200 { ok }` | Owner |
+| PUT | `/api/canvas/:id` | `{ name?, isShared?, isPublic? }` | `200 { ok }` | Owner |
 | PUT | `/api/canvas/:id/folder` | `{ folderId }` (`null` = no folder) | `200 { ok }` | Logged in, owns canvas and folder |
 | DELETE | `/api/canvas/:id` | | `200 { ok }` | Owner |
 | GET | `/api/canvas/:id/strokes` | | `200` strokes, oldest first | Shared |
@@ -145,7 +145,7 @@ A socket joins one canvas at a time and must join before sending anything else. 
 
 | Client to server | Payload | Ack data |
 |---|---|---|
-| `canvas:join` | `canvasId`, `{ ownerToken? }` | `strokes`, `elements`, `isShared`, `isOwner` |
+| `canvas:join` | `canvasId`, `{ ownerToken? }` | `strokes`, `elements`, `isShared`, `isPublic`, `isOwner` |
 | `canvas:leave` | | |
 | `stroke:add` / `stroke:delete` / `stroke:undo` | stroke / stroke id / none | `id` (add, undo) |
 | `canvas:clear` (owner) | | `removed` |
@@ -165,7 +165,7 @@ Changes are not echoed to the socket that made them (except `canvas:peers`); RES
 
 | Entity | Fields |
 |---|---|
-| **Canvas** | `_id`, `name` (default `untitled`), `isShared` (default `false`), `layers` (`foreground`, `middleground`, `background`), `createdAt`, `updatedAt`, `folderId` (only in `/canvas/mine`) |
+| **Canvas** | `_id`, `name` (default `untitled`), `isShared` (default `false`; anyone with the id can join), `isPublic` (default `false`; also listed in the Gallery, implies `isShared`), `layers` (`foreground`, `middleground`, `background`), `createdAt`, `updatedAt`, `folderId` (only in `/canvas/mine`) |
 | **Folder** | `id`, `name` (trimmed, 1-30 characters, unique per account ignoring case), `createdAt`, `updatedAt` |
 | **Stroke** | `id`, `canvasId`, `layerId`, `brush`, `color`, `size` (0-500), `opacity` (0-1), `path` (1-5000 `{ x, y }` points) |
 | **Element** | `id`, `canvasId`, `type` (`shape`, `photo`, `cutout`; fixed), `x`, `y`, `width`, `height`, `rotation`, `zIndex`, plus per type: `shape`, `color` (`null` = dashed template); `url`, `photographer`, `photographerLink` (https Unsplash image); `cutWidth`, `cutHeight`, `photo` (cutout) |
