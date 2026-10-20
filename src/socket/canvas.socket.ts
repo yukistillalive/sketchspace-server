@@ -3,6 +3,7 @@
 import type { Server, Socket } from 'socket.io';
 import { canvasEvents } from '../services/canvas.events.js';
 import { clearCanvasStrokes, getAccessibleCanvas } from '../services/canvas.service.js';
+import { isListed } from '../models/canvas.model.js';
 import { userIdFromCookieHeader } from '../middleware/auth.middleware.js';
 import {
   addElement,
@@ -35,6 +36,7 @@ type JoinAck = Ack<{
   strokes: StrokeMessage[];
   elements: ElementMessage[];
   isShared: boolean;
+  isPublic: boolean;
   isOwner: boolean;
 }>;
 
@@ -173,6 +175,7 @@ export function registerCanvasSocket(io: CanvasServer): void {
       ack({
         ok: true,
         isShared: joinable.canvas.isShared,
+        isPublic: isListed(joinable.canvas),
         isOwner: joinable.isOwner,
         strokes: await listStrokeMessages(canvasId),
         elements: await listElementMessages(canvasId),

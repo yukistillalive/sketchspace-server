@@ -156,7 +156,7 @@ describe('GET /api/canvas/mine', () => {
   it("lists only the account's canvases, shared and private", async () => {
     const carol = await register('carol');
     await create({ name: 'c-private', isShared: false }, asUser(carol));
-    await create({ name: 'c-shared', isShared: true }, asUser(carol));
+    await create({ name: 'c-shared', isShared: true, isPublic: true }, asUser(carol));
     await create({ name: 'someone-else', isShared: true }, asUser(bob));
     await create({ name: 'guest-one', isShared: true });
 

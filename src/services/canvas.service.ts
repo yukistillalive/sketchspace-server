@@ -6,11 +6,12 @@ import {
   deleteCanvas,
   findCanvas,
   listCanvasByOwner,
-  listSharedCanvas,
+  listPublicCanvas,
   setCanvasOwnerUser,
   updateCanvas,
 } from '../repositories/canvas.repository.js';
 import {
+  isListed,
   toOwnedCanvas,
   toPublicCanvas,
   type CanvasDoc,
@@ -89,9 +90,9 @@ export async function getAccessibleCanvasView(
   return { ok: true, canvas: { ...toPublicCanvas(access.canvas), isOwner: access.isOwner } };
 }
 
-/** Canvases visible to everyone: the shared ones. Private canvases are not listed. */
+/** Canvases listed in the Gallery: the public ones. Shared-by-id and private canvases are not listed. */
 export async function listPublicCanvases(): Promise<PublicCanvas[]> {
-  return (await listSharedCanvas()).map(toPublicCanvas);
+  return (await listPublicCanvas()).map(toPublicCanvas);
 }
 
 /**
@@ -124,8 +125,18 @@ export async function updateCanvasAndNotify(
   const allowed = await getManageableCanvas(id, ownerToken, false, userId);
   if (!allowed.ok) return allowed;
 
-  if (!(await updateCanvas(id, changes))) return { ok: false, status: 404, error: 'Canvas not found' };
-  if (changes.isShared === false) canvasEvents.emit('unshared', id);
+  // Sharing (anyone with the id can join) and being public (listed in the Gallery) are separate, but
+  // public needs shared: making a canvas public shares it, and making it private also unlists it.
+  if (changes.isPublic === true && changes.isShared === false)
+    return { ok: false, status: 400, error: 'A public canvas must be shared' };
+  const isShared = changes.isPublic === true ? true : changes.isShared;
+  const isPublic = changes.isShared === false ? false : changes.isPublic;
+  // write isPublic whenever sharing changes, so an older canvas (no isPublic yet) keeps its Gallery state
+  const keepsGalleryState = isShared !== undefined && isPublic === undefined ? { isPublic: isListed(allowed.canvas) } : {};
+  const applied: CanvasUpdate = { ...changes, isShared, isPublic, ...keepsGalleryState };
+
+  if (!(await updateCanvas(id, applied))) return { ok: false, status: 404, error: 'Canvas not found' };
+  if (isShared === false) canvasEvents.emit('unshared', id);
   return { ok: true };
 }
 
