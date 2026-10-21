@@ -45,101 +45,55 @@ Requires Node.js 22 and a running MongoDB.
 
 ```bash
 npm install
-cp .env.example .env     # then edit it
-npm run dev              # http://localhost:3000
+cp .env.example .env
+npm run dev
 ```
 
-### Environment variables
+For Google sign-in, add every address the frontend is opened from under **Authorized JavaScript origins** of the OAuth client in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials).
 
-| Variable | Description |
-|---|---|
-| `CLIENT_ORIGIN` | Frontend origin(s), comma-separated, scheme and host only (`http://localhost:8080`). Wildcards are not supported. |
-| `JWT_SECRET` | Signs login tokens. Generate one with `openssl rand -hex 32`. The value in `.env.example` is for demonstration only. |
-| `GOOGLE_CLIENT_ID` | Optional. Enables Google sign-in; must equal the frontend's `VITE_GOOGLE_CLIENT_ID`. Without it `POST /api/auth/google` answers `503`. |
-| `MONGODB_URI` | Database connection string (set automatically by Docker Compose). |
-| `PORT` | Port to listen on. Default `3000`. |
-| `UPLOAD_DIR` | Where profile pictures are stored. Default `./uploads`. |
-| `SITE_ADDRESS` | Docker only: public hostname for Caddy's HTTPS (`:80` for plain HTTP). |
-| `HTTP_PORT`, `HTTPS_PORT`, `MONGO_PORT` | Docker only: host ports for Caddy and for inspecting MongoDB (default `27018`). |
-
-For Google sign-in, add every address the frontend is opened from under **Authorized JavaScript origins** of the OAuth client in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials), or Google answers `Error 400: origin_mismatch`.
-
-### Scripts
-
-| Script | Description |
-|---|---|
-| `npm run dev` | Start with reload |
-| `npm run build` / `npm start` | Compile to `dist/` / run the compiled server |
-| `npm run typecheck` | Type check source and tests |
-| `npm test` | Run the test suite |
-
-## API
-
-Base URL `http://localhost:3000` (locally) or `https://91-98-226-226.sslip.io` (deployed). All bodies are JSON. Interactive examples are in the Postman collection in `postman/`.
-
-### Authentication and access
-
-- **Logged in:** send `Authorization: Bearer <token>` (returned by register, login and Google sign-in), or rely on the `httpOnly` `token` cookie. Cross-origin browser clients using the cookie must send credentials (`fetch(..., { credentials: 'include' })`, `io(url, { withCredentials: true })`).
-- **Owner token:** `POST /api/canvas` returns an `ownerToken` once (only its hash is stored). Send it as the `X-Owner-Token` header, or as `{ ownerToken }` in `canvas:join`. A canvas created while logged in also belongs to the account, so its owner needs no token on any device. `POST /api/canvas/:id/claim` attaches a token-owned canvas to the account.
-- **Access levels:** **Anyone**; **Shared** (anyone on a shared canvas, only the owner on a private one); **Owner**; **Logged in**.
-
-### Errors
-
-Errors return `{ "error": "message" }` with status `400` (invalid id or body), `401` (not logged in or bad credentials), `403` (private canvas or not the owner), `404` (not found), `409` (duplicate email or folder name), `413` (body too large), `415` (wrong media type), `503` (Google sign-in not configured) or `500`.
+## Condensed API Document
 
 ### REST endpoints
 
-| Method | Endpoint | Body | Success | Access |
-|---|---|---|---|---|
-| GET | `/health` | | `200 { ok }` | Anyone |
-| POST | `/api/auth/register` | `{ email, password, displayName }` | `201 { user, token }` | Anyone |
-| POST | `/api/auth/login` | `{ email, password }` | `200 { user, token }` | Anyone |
-| POST | `/api/auth/google` | `{ idToken }` | `200/201 { user, token }` | Anyone |
-| GET | `/api/auth/session` | | `200 { user }` (`null` for a guest) | Anyone |
-| POST | `/api/auth/logout` | | `200 { ok }` | Anyone |
-| GET | `/api/users/me` | | `200` user | Logged in |
-| PUT | `/api/users/me` | `{ displayName?, avatarUrl? }` | `200` user | Logged in |
-| PUT | `/api/users/me/avatar` | image bytes (`image/png`, `jpeg`, `webp`, max 2 MB) | `200` user | Logged in |
-| DELETE | `/api/users/me/avatar` | | `200` user | Logged in |
-| DELETE | `/api/users/me` | | `200 { ok }` (also deletes its canvases and folders) | Logged in |
-| POST | `/api/canvas` | `{ name?, isShared?, isPublic? }` | `201 { canvasId, ownerToken }` | Anyone |
-| GET | `/api/canvas` | | `200` public canvases (the Gallery) | Anyone |
-| GET | `/api/canvas/mine` | | `200` the user's canvases, each with `folderId` | Logged in |
-| GET | `/api/canvas/:id` | | `200` canvas with `isOwner` | Shared |
-| POST | `/api/canvas/:id/claim` | | `200 { ok }` | Logged in + owner token |
-| PUT | `/api/canvas/:id` | `{ name?, isShared?, isPublic? }` | `200 { ok }` | Owner |
-| PUT | `/api/canvas/:id/folder` | `{ folderId }` (`null` = no folder) | `200 { ok }` | Logged in, owns canvas and folder |
-| DELETE | `/api/canvas/:id` | | `200 { ok }` | Owner |
-| GET | `/api/canvas/:id/strokes` | | `200` strokes, oldest first | Shared |
-| POST | `/api/canvas/:id/strokes` | stroke | `201 { strokeId }` | Shared |
-| DELETE | `/api/canvas/:id/strokes/:strokeId` | | `200 { ok }` | Shared |
-| DELETE | `/api/canvas/:id/strokes` | | `200 { ok, removed }` | Owner |
-| GET | `/api/canvas/:id/elements` | | `200` elements, oldest first | Shared |
-| POST | `/api/canvas/:id/elements` | element | `201 { elementId }` | Shared |
-| PUT | `/api/canvas/:id/elements/:elementId` | changed fields | `200 { ok }` | Shared |
-| DELETE | `/api/canvas/:id/elements/:elementId` | | `200 { ok }` | Shared |
-| GET | `/api/folders` | | `200` the user's folders | Logged in |
-| POST | `/api/folders` | `{ name }` | `201` folder | Logged in |
-| PUT | `/api/folders/:id` | `{ name }` | `200` folder | Logged in, folder owner |
-| DELETE | `/api/folders/:id` | | `200 { ok }` (its canvases are kept) | Logged in, folder owner |
+Access: **anyone**, **shared** (anyone on a shared canvas, only the owner on a private one), **owner**, **login**.
+
+| Endpoint | Result | Params / body |
+|---|---|---|
+| `GET /health` | `{ ok }` | |
+| `POST /api/auth/register` | `201 { user, token }` | `email`, `password`, `displayName` |
+| `POST /api/auth/login` | `{ user, token }` | `email`, `password` |
+| `POST /api/auth/google` | `{ user, token }` | `idToken` |
+| `GET /api/auth/session` | `{ user }`, `null` for a guest | |
+| `POST /api/auth/logout` | `{ ok }` | |
+| `GET /api/users/me` | the user (**login**) | |
+| `PUT /api/users/me` | the updated user (**login**) | `displayName?`, `avatarUrl?` |
+| `PUT /api/users/me/avatar` | the updated user (**login**) | image bytes: png, jpeg or webp, max 2 MB |
+| `DELETE /api/users/me/avatar` | the updated user (**login**) | |
+| `DELETE /api/users/me` | `{ ok }`; also deletes its canvases and folders (**login**) | |
+| `POST /api/canvas` | `201 { canvasId, ownerToken }` | `name?`, `isShared?`, `isPublic?` |
+| `GET /api/canvas` | public canvases (the Gallery) | |
+| `GET /api/canvas/mine` | the user's canvases, each with `folderId` (**login**) | |
+| `GET /api/canvas/:id` | the canvas with `isOwner` (**shared**) | |
+| `POST /api/canvas/:id/claim` | `{ ok }` (**login** + owner token) | |
+| `PUT /api/canvas/:id` | `{ ok }` (**owner**) | `name?`, `isShared?`, `isPublic?` |
+| `PUT /api/canvas/:id/folder` | `{ ok }` (**login**, owns canvas and folder) | `folderId` (`null` = no folder) |
+| `DELETE /api/canvas/:id` | `{ ok }` (**owner**) | |
+| `GET /api/canvas/:id/strokes` | strokes, oldest first (**shared**) | |
+| `POST /api/canvas/:id/strokes` | `201 { strokeId }` (**shared**) | a stroke |
+| `DELETE /api/canvas/:id/strokes/:strokeId` | `{ ok }` (**shared**) | |
+| `DELETE /api/canvas/:id/strokes` | `{ ok, removed }` (**owner**) | |
+| `GET /api/canvas/:id/elements` | elements, oldest first (**shared**) | |
+| `POST /api/canvas/:id/elements` | `201 { elementId }` (**shared**) | an element |
+| `PUT /api/canvas/:id/elements/:elementId` | `{ ok }` (**shared**) | the changed fields |
+| `DELETE /api/canvas/:id/elements/:elementId` | `{ ok }` (**shared**) | |
+| `GET /api/folders` | the user's folders (**login**) | |
+| `POST /api/folders` | `201` the folder (**login**) | `name` |
+| `PUT /api/folders/:id` | the folder (**login**, folder owner) | `name` |
+| `DELETE /api/folders/:id` | `{ ok }`; its canvases are kept (**login**, folder owner) | |
 
 Uploaded profile pictures are served from `/uploads/avatars/<file>`.
 
-### Real-time (socket.io)
-
-REST and socket.io write through the same services, so a change made either way reaches everyone on the canvas. Use the socket while a canvas is open and REST for everything else (canvas management, scripts, retries).
-
-```js
-const socket = io(API, { withCredentials: true });
-socket.emit('canvas:join', canvasId, { ownerToken }, (res) => {
-  if (!res.ok) return console.error(res.error);
-  res.strokes.forEach(drawStroke);
-  res.elements.forEach(drawElement);
-});
-socket.emit('stroke:add', { canvasId, layerId: 'foreground', brush: 'pen', size: 4,
-  color: '#222222', opacity: 1, path: [{ x: 10, y: 12 }, { x: 14, y: 18 }] }, (res) => {});
-socket.on('stroke:added', drawStroke);
-```
+### socket.io
 
 A socket joins one canvas at a time and must join before sending anything else. Every client event has an acknowledgement receiving `{ ok: true, ...data }` or `{ ok: false, error }`. The login is read from the cookie sent with the connection; reconnect after logging in or out.
 
@@ -159,8 +113,6 @@ A socket joins one canvas at a time and must join before sending anything else. 
 | `canvas:peers` | number | Participants in the canvas |
 | `canvas:unshared`, `canvas:deleted` | | The canvas became private or was deleted; you were removed |
 
-Changes are not echoed to the socket that made them (except `canvas:peers`); REST changes go to everyone. Concurrent element updates are last write wins. `stroke:undo` removes the caller's latest stroke; strokes added over REST cannot be undone.
-
 ### Data models
 
 | Entity | Fields |
@@ -170,8 +122,6 @@ Changes are not echoed to the socket that made them (except `canvas:peers`); RES
 | **Stroke** | `id`, `canvasId`, `layerId`, `brush`, `color`, `size` (0-500), `opacity` (0-1), `path` (1-5000 `{ x, y }` points) |
 | **Element** | `id`, `canvasId`, `type` (`shape`, `photo`, `cutout`; fixed), `x`, `y`, `width`, `height`, `rotation`, `zIndex`, plus per type: `shape`, `color` (`null` = dashed template); `url`, `photographer`, `photographerLink` (https Unsplash image); `cutWidth`, `cutHeight`, `photo` (cutout) |
 | **User** | `id`, `email`, `displayName` (2-30 characters), `avatarUrl`, `hasCustomAvatar`, `createdAt` |
-
-Elements store the image URL only; clients load the image from Unsplash. Private canvases are not listed and can be joined only by their owner. Deleting a canvas removes its strokes and elements; deleting an account removes its canvases, folders and avatar. Canvases created before owner tokens have no owner and are open to everyone.
 
 ## Testing
 
@@ -203,13 +153,9 @@ To update a running server: `ssh root@<server-ip>`, `cd ~/sketchspace-server`, `
 
 ## Inspecting the database
 
-MongoDB is published only on the VPS's own loopback (`127.0.0.1:27018`). To look at the hosted data from VS Code, forward that port over SSH, then connect to it with the [MongoDB for VS Code](https://marketplace.visualstudio.com/items?itemName=mongodb.mongodb-vscode) extension.
+MongoDB is published only on the VPS's own loopback (`127.0.0.1:27018`). To look at the hosted data from VS Code, forward that port over SSH, then connect to it with the [MongoDB for VS Code](https://marketplace.visualstudio.com/items?itemName=mongodb.mongodb-vscode) extension. In VS Code, add a connection to `mongodb://localhost:27018`.
 
 ```bash
-# on your computer; keep this terminal open
+# connect to VPS and keep this terminal open
 ssh -N -L 27018:127.0.0.1:27018 root@<server-ip>
 ```
-
-In VS Code, add a connection to `mongodb://localhost:27018` and open the `sketch-space` database. Ready-made queries are in `mongodb/`.
-
-Locally with Docker Compose, skip the SSH step and connect to `mongodb://localhost:27018` directly.
